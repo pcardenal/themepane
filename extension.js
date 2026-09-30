@@ -502,7 +502,10 @@ async function pick() {
     if (isCustom(state)) items.push({ label: "$(discard)  Reset to default", clear: true });
     items.push(separator);
   }
-  if (!savedWorkspace()) {
+  const saved = savedWorkspace();
+  if (saved) {
+    items.push({ label: "$(file-code)  Workspace file", description: saved.path.split("/").slice(-2).join("/"), openFile: saved });
+  } else {
     const file = workspaceFileFor(vscode.workspace.workspaceFolders);
     items.push({
       label: "$(window)  Reopen in workspace",
@@ -527,6 +530,7 @@ async function pick() {
   if (choice.restore) return restore();
   if (choice.culprit) return uninstallCulprit(conflict.culprit);
   if (choice.ignore) return ignoreConflict(conflict);
+  if (choice.openFile) return vscode.window.showTextDocument(choice.openFile);
   if (choice.reopen) return reopenInWorkspace(elsewhere || isCustom(state) ? null : "menu");
   if (choice.clear) return applyToWorkspace({ background: null, accent: null });
   if (choice.check) return checkUpdate(true);
@@ -839,7 +843,7 @@ async function restore() {
 function updateStatus() {
   if (leaving) return status.hide();
   if (!writable()) {
-    status.text = "$(themepane-logo) Themepane · Disabled";
+    status.text = "$(warning) Themepane · No workspace";
     status.tooltip = "Themepane\nWorkspace only: colors apply inside workspaces." +
       (elsewhere ? "\n" + pairName(elsewhere.state) + " is saved in " + shortPath(elsewhere.file) + "." : "") +
       "\nClick to reopen in one.";

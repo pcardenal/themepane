@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Themepane into VS Code on Linux, macOS, WSL or Git Bash on Windows: the latest
+# Install Themepane into VS Code on Linux, macOS, or WSL: the latest
 # GitHub release by default, or --dev to build this checkout. WSL installs into Windows VS Code.
 set -euo pipefail
 # The braces make bash read the whole script before running it, so a command that reads
