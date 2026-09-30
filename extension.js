@@ -112,6 +112,7 @@ const DEFAULT_BACKGROUND = BACKGROUNDS[0].hex;
 const PENDING = "themepane.pickOnOpen";
 const CULPRIT_STATE = "themepane.culprits";
 const IGNORED = "themepane.ignoredConflict";
+const IGNORED_SETUP = "themepane.ignoredSetup";
 
 let ctx;
 let status;
@@ -119,7 +120,8 @@ let status;
 // if it has colors, and whether its file exists at all.
 let elsewhere = null;
 let workspaceFound = false;
-// Colors changed by something else ({ keys, culprit, sig }), and the last one warned about.
+// Colors, theme or layout changed by something else ({ keys, culprit, sig, setup, setupSig }),
+// and the last one warned about.
 let conflict = null;
 let notified = null;
 // While a picker previews, conflicts keep their last state, so the status text stays put.
@@ -220,6 +222,32 @@ const LAYOUT = {
   "workbench.experimental.modernUI": true,
   "workbench.experimental.modernUIEditorTabStyle": "pill",
 };
+
+// The theme and layout the palette is drawn for; anything else is flagged like a color conflict.
+const THEME = "Dark 2026";
+const SETUP = { "workbench.colorTheme": THEME, ...LAYOUT };
+
+function setupChanges() {
+  const cfg = vscode.workspace.getConfiguration();
+  return Object.keys(SETUP).map((key) => ({ key, got: cfg.get(key) })).filter(({ key, got }) => got !== SETUP[key]);
+}
+
+function setupText({ key, got }) {
+  if (key === "workbench.colorTheme") return "the theme is " + got + ", not " + THEME;
+  if (key === "workbench.experimental.modernUI") return "the modern layout is off";
+  return "tabs are " + got + ", not pill";
+}
+
+// Put the theme and layout back: in the user settings, and in the workspace where it overrides them.
+async function restoreSetup() {
+  const cfg = vscode.workspace.getConfiguration();
+  const T = vscode.ConfigurationTarget;
+  for (const { key } of setupChanges()) {
+    const info = cfg.inspect(key);
+    if (info.workspaceValue !== undefined && writable()) await cfg.update(key, undefined, T.Workspace);
+    if (info.globalValue !== SETUP[key]) await cfg.update(key, SETUP[key], T.Global);
+  }
+}
 
 async function writeJson(file, value) {
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(file, ".."));
@@ -492,7 +520,7 @@ async function pick() {
   const separator = { label: "", kind: vscode.QuickPickItemKind.Separator };
   const items = [];
   if (conflict) {
-    items.push({ label: "$(warning)  Restore colors", description: conflictText(conflict), restore: true });
+    items.push({ label: "$(warning)  Restore", description: conflictText(conflict), restore: true });
     if (conflict.culprit) {
       items.push({ label: "$(trash)  Uninstall " + conflict.culprit.name, description: "for the full tint", culprit: true });
     }
@@ -743,10 +771,19 @@ function findConflict() {
     got[k] = v;
     return typeof v !== "string" || v.toLowerCase() !== want[k].toLowerCase();
   });
-  if (!keys.length) return null;
-  const culprit = enabledCulprits().find((c) => c.why === REWRITES);
-  const sig = JSON.stringify(keys.map((k) => [k, got[k]]));
-  return { keys, culprit, sig };
+  const setup = setupChanges();
+  if (!keys.length && !setup.length) return null;
+  const culprit = keys.length ? enabledCulprits().find((c) => c.why === REWRITES) : undefined;
+  const sig = keys.length ? JSON.stringify(keys.map((k) => [k, got[k]])) : null;
+  const setupSig = setup.length ? JSON.stringify(setup.map((c) => [c.key, c.got])) : null;
+  return { keys, culprit, sig, setup, setupSig };
+}
+
+// Without what the user chose to ignore: colors per workspace, theme and layout everywhere.
+function unignored(c) {
+  if (c && c.sig && ctx.workspaceState.get(IGNORED) === c.sig) c = { ...c, keys: [], culprit: undefined, sig: null };
+  if (c && c.setupSig && ctx.globalState.get(IGNORED_SETUP) === c.setupSig) c = { ...c, setup: [], setupSig: null };
+  return c && (c.keys.length || c.setup.length) ? c : null;
 }
 
 // Debounced check once Themepane's own writes have landed. Warns once per new conflict,
@@ -757,35 +794,41 @@ function scheduleCheck() {
   checkTimer = setTimeout(async () => {
     await queue;
     if (leaving || picking) return;
-    conflict = findConflict();
-    if (conflict && ctx.workspaceState.get(IGNORED) === conflict.sig) conflict = null;
+    conflict = unignored(findConflict());
     updateStatus();
-    if (!conflict || conflict.sig === notified || !vscode.window.state.focused) return;
-    notified = conflict.sig;
+    const seen = conflict && conflict.sig + conflict.setupSig;
+    if (!conflict || seen === notified || !vscode.window.state.focused) return;
+    notified = seen;
     const justWarned = conflict.culprit && Date.now() - (warnedCulprits[conflict.culprit.id] || 0) < 30000;
     if (!justWarned) warnConflict(conflict);
   }, 1500);
 }
 
 function conflictText(c) {
-  return c.keys.length + (c.keys.length === 1 ? " color was" : " colors were") + " changed by " +
-    (c.culprit ? c.culprit.name : "something else");
+  const parts = c.setup.map(setupText);
+  if (c.keys.length) {
+    parts.unshift(c.keys.length + (c.keys.length === 1 ? " color was" : " colors were") + " changed by " +
+      (c.culprit ? c.culprit.name : "something else"));
+  }
+  return parts.join("; ");
 }
 
 async function warnConflict(c) {
   const remove = c.culprit && "Uninstall " + c.culprit.name;
-  const buttons = ["Restore colors", ...(remove ? [remove] : []), "Don't warn again"];
+  const buttons = ["Restore", ...(remove ? [remove] : []), "Don't warn again"];
   const choice = await vscode.window.showWarningMessage(
-    "Themepane: " + conflictText(c) + ". Restore them, or remove whatever is rewriting workbench.colorCustomizations.",
+    "Themepane: " + conflictText(c) +
+      (c.keys.length ? ". Restore them, or remove whatever is rewriting workbench.colorCustomizations." : ". Its colors are made for " + THEME + "."),
     ...buttons
   );
-  if (choice === "Restore colors") restore();
+  if (choice === "Restore") restore();
   else if (remove && choice === remove) uninstallCulprit(c.culprit);
   else if (choice === "Don't warn again") ignoreConflict(c);
 }
 
 async function ignoreConflict(c) {
-  await ctx.workspaceState.update(IGNORED, c.sig);
+  if (c.sig) await ctx.workspaceState.update(IGNORED, c.sig);
+  if (c.setupSig) await ctx.globalState.update(IGNORED_SETUP, c.setupSig);
   conflict = null;
   updateStatus();
 }
@@ -812,9 +855,10 @@ function withoutThemeKeys(value, theme) {
   return next;
 }
 
-// Put this window's colors back: clear theme blocks, then rewrite the user default
-// and the workspace, where allowed or where it already holds Themepane's values.
+// Put this window's theme, layout and colors back: clear theme blocks, then rewrite the user
+// default and the workspace, where allowed or where it already holds Themepane's values.
 async function restore() {
+  await enqueue(restoreSetup);
   const wb = config("workbench");
   const theme = wb.get("colorTheme");
   const info = wb.inspect("colorCustomizations");
@@ -831,7 +875,7 @@ async function restore() {
   await enqueue(applyDefaults);
   if (own) await applyToWorkspace(current());
   await queue;
-  const left = findConflict();
+  const left = unignored(findConflict());
   if (left) {
     vscode.window.showWarningMessage(
       "Themepane: " + conflictText(left) + " and can't be restored from here" +
@@ -1037,7 +1081,7 @@ function activate(context) {
   const hourly = setInterval(() => vscode.window.state.focused && autoCheck(), 60 * 60 * 1000);
   context.subscriptions.push(
     { dispose: () => clearInterval(hourly) },
-    vscode.window.onDidChangeWindowState((w) => w.focused && autoCheck()),
+    vscode.window.onDidChangeWindowState((w) => { if (w.focused) { autoCheck(); scheduleCheck(); } }),
     status,
     vscode.commands.registerCommand("projectColor.pick", pick),
     vscode.commands.registerCommand("projectColor.pickBackground", () => pickKnob("background")),
@@ -1047,8 +1091,8 @@ function activate(context) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("projectColor.workspaceOnly")) checkElsewhere(false);
       else if (e.affectsConfiguration("projectColor")) updateStatus();
-      if (e.affectsConfiguration("workbench.colorCustomizations") || e.affectsConfiguration("workbench.colorTheme") ||
-          e.affectsConfiguration("projectColor")) scheduleCheck();
+      if (e.affectsConfiguration("workbench.colorCustomizations") || e.affectsConfiguration("projectColor") ||
+          Object.keys(SETUP).some((k) => e.affectsConfiguration(k))) scheduleCheck();
     }),
     vscode.extensions.onDidChange(() => { warnCulprits(); scheduleCheck(); }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => checkElsewhere(false))

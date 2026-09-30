@@ -14,8 +14,9 @@ Obsidian. Accents come bold (Cobalt, Jade), dusty (Bronze, Pewter), pastel (Matc
 or pearly (Nacre, Opal), plus Snow. Each background has a matching accent, so one pick is
 enough, and **Custom…** takes any hex and tones it down so nothing glows.
 
-Click **Themepane** in the status bar, pick **Background** or **Accent**, and scroll: the
-window changes as you go. Enter keeps a color, Esc goes back.
+Click **Themepane** in the status bar (or press `Ctrl+Alt+T`, `Ctrl+Cmd+T` on a Mac), pick
+**Background** or **Accent**, and scroll: the window changes as you go. Enter keeps a color,
+Esc goes back.
 
 ## Install
 
@@ -45,9 +46,9 @@ pair lives in your user settings; a project's colors live in its `.code-workspac
   in workspace** switches to it (`projectColor.reopenWorkspace` does that automatically).
 - **Layout**: Themepane turns on VS Code's modern layout with pill tabs, and puts your old
   settings back when you uninstall.
-- **Conflicts**: if something overrides the colors, the status bar reads **Themepane ·
-  Warning** and the menu offers to restore them. Clashing extensions like Peacock get
-  flagged.
+- **Conflicts**: if something overrides the colors, or you switch away from Dark 2026 or
+  pill tabs, the status bar reads **Themepane · Warning**, and you can **Restore** or
+  ignore the change. Clashing extensions like Peacock get flagged.
 - **Updates**: Themepane checks GitHub daily. A new release turns the status bar item green
   and adds **Update Themepane** to the menu.
 

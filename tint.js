@@ -1,6 +1,6 @@
 "use strict";
 
-// The palette: Dark Modern's grays and blues redrawn in a background and an accent.
+// The palette: Dark Modern's and Dark 2026's grays and blues redrawn in a background and an accent.
 // Pure functions over hex strings, runnable in plain node.
 
 // Dark Modern's neutral grays. Editor keys use the sidebar's #181818 so all panes match.
@@ -108,6 +108,32 @@ const BASE = {
   "editorRuler.foreground": "#5a5a5a",
   "editorWhitespace.foreground": "#e3e4e229",
   "editorActiveLineNumber.foreground": "#c6c6c6",
+  // Dark 2026's own grays for keys Dark Modern left to defaults; its pane levels map to #181818.
+  "surface.background": "#181818",
+  "agents.background": "#181818",
+  "agentsPanel.background": "#181818",
+  "editorStickyScroll.background": "#181818",
+  "tab.unfocusedActiveBackground": "#181818",
+  "terminalCursor.background": "#181818",
+  "editorHoverWidget.background": "#202122",
+  "editorSuggestWidget.background": "#202122",
+  "breadcrumbPicker.background": "#202122",
+  "quickInputTitle.background": "#202122",
+  "agentsChatInput.background": "#202122",
+  "editor.lineHighlightBackground": "#242526",
+  "editorHoverWidget.border": "#2a2b2c",
+  "editorSuggestWidget.border": "#2a2b2c",
+  "editorWidget.border": "#2a2b2c",
+  "editorStickyScroll.border": "#2a2b2c",
+  "notificationCenter.border": "#2a2b2c",
+  "notificationToast.border": "#2a2b2c",
+  "panelSection.border": "#2a2b2c",
+  "panelSectionHeader.border": "#2a2b2c",
+  "peekView.border": "#2a2b2c",
+  "terminal.border": "#2a2b2c",
+  "tab.lastPinnedBorder": "#2a2b2c",
+  "button.secondaryBorder": "#333536",
+  "scrollbar.shadow": "#191b1d4d",
 };
 
 // Dark Modern's blue accents and VS Code's blue selection defaults. Each is
@@ -147,6 +173,25 @@ const ACCENT = {
   "chat.requestCodeBorder": "#004972b8",
   "inputValidation.infoBackground": "#063b49",
   "inputValidation.infoBorder": "#007acc",
+  // Dark 2026's blues: focus outlines and borders, links, match and comment highlights.
+  "activityBar.activeFocusBorder": "#3994bcb3",
+  "list.focusOutline": "#3994bcb3",
+  "editorSuggestWidget.focusOutline": "#3994bcb3",
+  "menu.selectionBorder": "#3994bc",
+  "button.border": "#297aa0",
+  "chat.inputWorkingBorderColor1": "#297aa0",
+  "agentsGradient.tintColor": "#297aa0",
+  "editorOverviewRuler.findMatchForeground": "#3a94bc99",
+  "editorLink.activeForeground": "#3a94bc",
+  "notificationLink.foreground": "#3a94bc",
+  "editor.findMatchBackground": "#27678290",
+  "editor.findMatchHighlightBackground": "#27678280",
+  "editorBracketMatch.background": "#3994bc55",
+  "peekViewEditor.matchHighlightBackground": "#3994bc33",
+  "peekViewResult.matchHighlightBackground": "#3994bc33",
+  "terminal.selectionBackground": "#3994bc33",
+  "editorCommentsWidget.rangeBackground": "#488fae26",
+  "editorCommentsWidget.rangeActiveBackground": "#488fae46",
   // Cursors default to gray; they take the link color so they stand out.
   "editorCursor.foreground": "#4daafc",
   "terminalCursor.foreground": "#4daafc",
@@ -251,8 +296,11 @@ const FILLS = [
   "statusBar.debuggingBackground",
   "progressBar.background",
   "quickInputList.focusBackground",
+  "extensionButton.prominentBackground",
+  "agentsBadge.background",
+  "agentsUnreadBadge.background",
 ];
-const FILL_HOVER = "button.hoverBackground";
+const FILL_HOVER = ["button.hoverBackground", "extensionButton.prominentHoverBackground"];
 const FILL_TEXT = [
   "button.foreground",
   "activityBarBadge.foreground",
@@ -262,10 +310,13 @@ const FILL_TEXT = [
   "quickInputList.focusForeground",
   "quickInputList.focusIconForeground",
   "quickInputList.focusHighlightForeground",
+  "extensionButton.prominentForeground",
+  "agentsBadge.foreground",
+  "agentsUnreadBadge.foreground",
 ];
 const FILL_L = 0.52, FILL_C = 0.133, LIGHT = 0.65;
 
-// Lines and marks that wear the fill exactly, so focus rings match the buttons.
+// Lines and marks that wear the fill exactly (at their own opacity), so focus rings match the buttons.
 const MARKS = [
   "focusBorder",
   "activityBar.activeBorder",
@@ -278,6 +329,14 @@ const MARKS = [
   "inputValidation.infoBorder",
   "welcomePage.progress.foreground",
   "tab.activeModifiedBorder",
+  "activityBar.activeFocusBorder",
+  "list.focusOutline",
+  "editorSuggestWidget.focusOutline",
+  "menu.selectionBorder",
+  "button.border",
+  "chat.inputWorkingBorderColor1",
+  "agentsGradient.tintColor",
+  "editorOverviewRuler.findMatchForeground",
 ];
 
 // Accent text on the panes, all one color: the fill if it's as light as Dark
@@ -290,6 +349,8 @@ const INK = [
   "list.highlightForeground",
   "pickerGroup.foreground",
   "chat.slashCommandForeground",
+  "editorLink.activeForeground",
+  "notificationLink.foreground",
 ];
 
 // Composite `top` at `alpha` over `bottom`, as VS Code does.
@@ -329,6 +390,7 @@ const FRAME = [
   "editorGroupHeader.tabsBackground",
   "editorGroupHeader.tabsBorder",
   "tab.inactiveBackground",
+  "tab.unfocusedInactiveBackground",
   "editorGroup.border",
   "sideBar.border",
   "panel.border",
@@ -336,6 +398,53 @@ const FRAME = [
   "editor.border",
   "modernPanel.border",
 ];
+
+// Text and widgets on the frame, pinned to Dark Modern's so they read the same in any dark theme
+// (Dark 2026 dims bar text to #8c8c8c and puts gray boxes on the frame).
+const FRAME_TEXT = {
+  "titleBar.activeForeground": "#cccccc",
+  "titleBar.inactiveForeground": "#9d9d9d",
+  "statusBar.foreground": "#cccccc",
+  "statusBar.noFolderForeground": "#cccccc",
+  "statusBarItem.hoverBackground": "#f1f1f133",
+  "statusBarItem.activeBackground": "#ffffff2e",
+  "activityBar.foreground": "#d7d7d7",
+  "activityBar.inactiveForeground": "#9d9d9d",
+  "activityBarTop.foreground": "#e7e7e7",
+  "activityBarTop.inactiveForeground": "#e7e7e799",
+  "commandCenter.foreground": "#cccccc",
+  "commandCenter.activeForeground": "#cccccc",
+  "commandCenter.background": "#ffffff0d",
+  "commandCenter.activeBackground": "#ffffff14",
+  "commandCenter.border": "#cccccc33",
+  "commandCenter.activeBorder": "#cccccc4d",
+  "statusBarItem.prominentHoverBackground": "#f1f1f133",
+  "activityBar.activeBackground": "#ffffff1a",
+  "activityBarTop.activeBorder": "#e7e7e7",
+  "menubar.selectionBackground": "#f1f1f133",
+  "modernActivityBar.hoverBackground": "#f1f1f133",
+};
+
+// Dark 2026's dim grays raised to be read: text ≥ 4.5:1 on its surface, disabled items and
+// icons ≥ 3:1 on panes and frame alike, with disabled still well below enabled icons.
+const READABLE = {
+  "input.placeholderForeground": "#aaaaaa",
+  "agentsChatInput.placeholderForeground": "#aaaaaa",
+  "disabledForeground": "#ffffff73",
+  "icon.foreground": "#bfbfbf",
+  "checkbox.foreground": "#bfbfbf",
+  "tab.inactiveForeground": "#b5b5b5",
+  "tab.unfocusedActiveForeground": "#b5b5b5",
+  "tab.unfocusedInactiveForeground": "#9d9d9d",
+  "list.invalidItemForeground": "#9d9d9d",
+  "textPreformat.foreground": "#cccccc",
+  "descriptionForeground": "#9d9d9d",
+  "breadcrumb.foreground": "#9d9d9d",
+  "panelTitle.inactiveForeground": "#9d9d9d",
+  "editorCodeLens.foreground": "#9d9d9d",
+  "peekViewResult.lineForeground": "#9d9d9d",
+  "peekViewTitleDescription.foreground": "#9d9d9d",
+};
 
 // Lines inside a pane, made transparent: tab dividers, the scrollbar rule, the active tab's top line.
 const HIDDEN = [
@@ -351,8 +460,8 @@ const PILL_HOVER = ["modernEditorTab.hoverBackground"];
 const PILL_CLEAR = ["modernEditorTab.inactiveBackground"];
 
 const KEYS = [...new Set([
-  ...Object.keys(BASE), ...Object.keys(ACCENT), ...FRAME, ...HIDDEN,
-  ...PILL_ACTIVE, ...PILL_HOVER, ...PILL_CLEAR, ...FILLS, FILL_HOVER, ...FILL_TEXT,
+  ...Object.keys(BASE), ...Object.keys(ACCENT), ...FRAME, ...Object.keys(FRAME_TEXT), ...Object.keys(READABLE), ...HIDDEN,
+  ...PILL_ACTIVE, ...PILL_HOVER, ...PILL_CLEAR, ...FILLS, ...FILL_HOVER, ...FILL_TEXT,
 ])];
 
 // The pane tone: the background's hue, quieter and darker than the frame.
@@ -372,6 +481,8 @@ function colorsFor(background, accent) {
     const shift = pane.l - toHsl("#181818").l;
     Object.keys(BASE).forEach((k) => { out[k] = tint(BASE[k], pane, shift); });
     set(FRAME, background);
+    Object.assign(out, FRAME_TEXT);
+    Object.assign(out, READABLE);
     set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
     set(PILL_HOVER, toHex(frame.h, frame.s, Math.min(1, frame.l + 0.04)));
     set(PILL_CLEAR, "#00000000");
@@ -392,11 +503,11 @@ function colorsFor(background, accent) {
   Object.keys(ACCENT).forEach((k) => {
     out[k] = ACCENT[k].length > 7 ? wash(ACCENT[k], fill, pane) : solid;
   });
-  set(MARKS, fill);
+  MARKS.forEach((k) => { out[k] = fill + ACCENT[k].slice(7); });
   const link = toOklch(ACCENT["textLink.foreground"]);
   set(INK, fillL >= link.L ? fill : fromOklch(link.L, Math.min(link.C * 0.8, fillC), hue.h));
   set(FILLS, fill);
-  out[FILL_HOVER] = fromOklch(fillL + (light ? -0.04 : 0.04), fillC, hue.h);
+  set(FILL_HOVER, fromOklch(fillL + (light ? -0.04 : 0.04), fillC, hue.h));
   set(FILL_TEXT, light ? "#1f1f1f" : "#ffffff");
   return out;
 }
