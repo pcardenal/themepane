@@ -122,6 +122,8 @@ let workspaceFound = false;
 // Colors changed by something else ({ keys, culprit, sig }), and the last one warned about.
 let conflict = null;
 let notified = null;
+// While a picker previews, conflicts keep their last state, so the status text stays put.
+let picking = false;
 const warnedCulprits = {};
 // The status item's hover opens when a menu closes over it, so menus hide it; only a color
 // pick brings it straight back, anything else after TIP_DELAY (the mouse has moved on).
@@ -417,6 +419,8 @@ function pickKnob(knob) {
     return;
   }
   hideTip();
+  picking = true;
+  const done = () => { picking = false; scheduleCheck(); };
   const spec = KNOBS[knob];
   const before = current();
   const mark = (hex) => ((before[knob] || null) === hex ? "  (current)" : "");
@@ -452,7 +456,7 @@ function pickKnob(knob) {
     qp.hide();
     if (!item.custom) {
       showTip(0);
-      return applyToWorkspace(withKnob(before, knob, item.hex));
+      return applyToWorkspace(withKnob(before, knob, item.hex)).finally(done);
     }
     const input = await vscode.window.showInputBox({
       title: "Themepane: " + spec.title,
@@ -463,12 +467,12 @@ function pickKnob(knob) {
       validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex color like #1c2a1f"),
     });
     showTip(input ? 0 : TIP_DELAY);
-    await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before);
+    await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before).finally(done);
   });
   qp.onDidHide(() => {
     if (!accepted) {
       showTip(TIP_DELAY);
-      applyToWorkspace(before);
+      applyToWorkspace(before).finally(done);
     }
     qp.dispose();
   });
@@ -656,13 +660,9 @@ async function checkUpdate(manual) {
     if (manual) vscode.window.showInformationMessage("Themepane " + running + " is the latest version.");
     return;
   }
-  let choice;
-  do {
-    choice = await vscode.window.showInformationMessage(
-      "Themepane " + latest.version + " is available (you have " + running + ").", "Update", "What's New", "Skip This Version"
-    );
-    if (choice === "What's New") await vscode.env.openExternal(vscode.Uri.parse(latest.url));
-  } while (choice === "What's New");
+  const choice = await vscode.window.showInformationMessage(
+    "Themepane " + latest.version + " is available (you have " + running + ").", "Update", "Skip This Version"
+  );
   if (choice === "Update") await installUpdate(latest);
   else if (choice === "Skip This Version") await saveUpdateState({ skip: latest.version });
 }
@@ -707,7 +707,7 @@ function updateItems() {
   return [
     separator,
     { label: "$(arrow-circle-up)  Update Themepane", description: running + " → " + latest.version, update: latest },
-    { label: "$(debug-step-over)  Skip update", description: latest.version, skipUpdate: latest },
+    { label: "$(circle-slash)  Skip update", description: latest.version, skipUpdate: latest },
   ];
 }
 
@@ -756,7 +756,7 @@ function scheduleCheck() {
   clearTimeout(checkTimer);
   checkTimer = setTimeout(async () => {
     await queue;
-    if (leaving) return;
+    if (leaving || picking) return;
     conflict = findConflict();
     if (conflict && ctx.workspaceState.get(IGNORED) === conflict.sig) conflict = null;
     updateStatus();
@@ -864,7 +864,7 @@ function updateStatus() {
   const latest = !conflict && writable() && pendingUpdate();
   status.color = latest ? UPDATE_COLOR : undefined;
   if (latest) {
-    status.text = status.text.replace("$(themepane-logo)", "$(arrow-circle-up)");
+    status.text = "$(arrow-circle-up) Themepane · Update available";
     status.tooltip += "\n\nThemepane " + latest.version + " is available. Update it from the menu.";
   }
   if (tipHidden) status.tooltip = undefined;
