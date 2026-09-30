@@ -227,9 +227,13 @@ const LAYOUT = {
 const THEME = "Dark 2026";
 const SETUP = { "workbench.colorTheme": THEME, ...LAYOUT };
 
+// Settings an older VS Code doesn't have are skipped
+const registered = (key) => vscode.workspace.getConfiguration().inspect(key)?.defaultValue !== undefined;
+
 function setupChanges() {
   const cfg = vscode.workspace.getConfiguration();
-  return Object.keys(SETUP).map((key) => ({ key, got: cfg.get(key) })).filter(({ key, got }) => got !== SETUP[key]);
+  return Object.keys(SETUP).filter(registered).map((key) => ({ key, got: cfg.get(key) }))
+    .filter(({ key, got }) => got !== SETUP[key]);
 }
 
 function setupText({ key, got }) {
@@ -267,7 +271,7 @@ async function applyLayout() {
   const noted = async () => ((await readJson(noteFile)) || {}).keys || {};
   const cfg = vscode.workspace.getConfiguration();
   const seen = await noted();
-  const fresh = Object.keys(LAYOUT).filter((k) => !seen[k]);
+  const fresh = Object.keys(LAYOUT).filter((k) => !seen[k] && registered(k));
   await listNote(noteFile);
   if (!fresh.length) return;
   const keys = {};

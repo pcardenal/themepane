@@ -2,7 +2,7 @@
   "name": "themepane",
   "displayName": "Themepane",
   "description": "A background tint and an accent color per project, kept in the folder's settings or a workspace file outside the repo.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "pcardenal",
   "author": "Pol Cardenal",
   "license": "MIT",
