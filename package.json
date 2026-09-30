@@ -1,0 +1,105 @@
+{
+  "name": "themepane",
+  "displayName": "Themepane",
+  "description": "A background tint and an accent colour per project, kept in the folder's settings or a workspace file outside the repo.",
+  "version": "1.0.0",
+  "publisher": "pcardenal",
+  "author": "Pol Cardenal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pcardenal/themepane.git"
+  },
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "main": "extension.js",
+  "scripts": {
+    "vscode:uninstall": "node ./revert.js"
+  },
+  "files": [
+    "LICENSE",
+    "extension.js",
+    "tint.js",
+    "revert.js",
+    "node_modules/jsonc-parser/package.json",
+    "node_modules/jsonc-parser/lib/umd/**",
+    "images/icon.png",
+    "images/themepane.woff"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "projectColor.pick",
+        "title": "Themepane: Pick Colours…"
+      },
+      {
+        "command": "projectColor.pickBackground",
+        "title": "Themepane: Pick Background…"
+      },
+      {
+        "command": "projectColor.pickAccent",
+        "title": "Themepane: Pick Accent…"
+      },
+      {
+        "command": "projectColor.cleanUp",
+        "title": "Themepane: Clean Up and Uninstall…"
+      }
+    ],
+    "icons": {
+      "themepane-logo": {
+        "description": "Themepane logo",
+        "default": {
+          "fontPath": "images/themepane.woff",
+          "fontCharacter": "\\E000"
+        }
+      }
+    },
+    "configuration": {
+      "title": "Themepane",
+      "properties": {
+        "projectColor.color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "scope": "window",
+          "description": "Background for this workspace. Empty uses the default, Graphite."
+        },
+        "projectColor.accent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "scope": "window",
+          "description": "Accent for this workspace (buttons, selections, cursor, focus). Empty uses the accent linked to the background."
+        },
+        "projectColor.reopenWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "When a folder is opened on its own but Themepane has coloured it in a workspace, reopen the window through that workspace."
+        },
+        "projectColor.workspaceOnly": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Keep colours out of every folder's .vscode/settings.json. A folder opened on its own is reopened through a workspace file in <parent>/.workspaces/ to be coloured."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
+  }
+}
