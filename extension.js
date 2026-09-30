@@ -10,7 +10,7 @@ const revert = require("./revert");
 // Frame colours, each with its linked accent. Order: Graphite (the default), colours
 // in rainbow order, muted tints in rainbow order, then Obsidian.
 const BACKGROUNDS = [
-  { icon: "✏️", name: "Graphite", hex: "#393b3e", accent: "Cobalt" },
+  { icon: "✏️", name: "Graphite", hex: "#313336", accent: "Cobalt" },
   { icon: "🎀", name: "Cameo", hex: "#603b46", accent: "Nacre" },
   { icon: "🍷", name: "Bordeaux", hex: "#5e2035", accent: "Rose" },
   { icon: "🏮", name: "Garnet", hex: "#71151d", accent: "Carmine" },
@@ -55,6 +55,7 @@ const BACKGROUNDS = [
 // Removed presets, mapped to the one a workspace still wearing them moves to.
 const RETIRED = {
   "#154a47": "#004a46", // Pine -> Verdigris
+  "#393b3e": "#313336", // Graphite, darkened
 };
 
 // Accents in rainbow order, then neutral Snow. tint.js caps chroma, so custom picks stay soft.
@@ -467,10 +468,10 @@ async function pick() {
   }
   if (writable()) {
     items.push(
-      { label: "$(symbol-color)  Background", description: nameOf("background", e.background) + (state.background ? "" : " (default)"), knob: "background" },
-      { label: "$(sparkle)  Accent", description: nameOf("accent", e.accent) + (state.accent ? "" : " (linked)"), knob: "accent" }
+      { label: "$(themepane-background)  Background", description: nameOf("background", e.background) + (state.background ? "" : " (default)"), knob: "background" },
+      { label: "$(themepane-accent)  Accent", description: nameOf("accent", e.accent) + (state.accent ? "" : " (linked)"), knob: "accent" }
     );
-    if (isCustom(state)) items.push({ label: "$(discard)  Reset to default", description: pairName({}), clear: true });
+    if (isCustom(state)) items.push({ label: "$(discard)  Reset to default", clear: true });
     items.push(separator);
   }
   if (!savedWorkspace()) {
@@ -542,6 +543,85 @@ async function warnCulprits() {
 function uninstallCulprit(c) {
   return vscode.commands.executeCommand("workbench.extensions.uninstallExtension", c.id)
     .then(null, () => vscode.commands.executeCommand("extension.open", c.id));
+}
+
+// VS Code never checks a VSIX install for updates, so Themepane asks GitHub itself: once a
+// day on startup, or on demand from the command. State: { checked, skip } in globalState.
+const REPO = "pcardenal/themepane";
+const UPDATE_STATE = "themepane.update";
+const DAY = 24 * 60 * 60 * 1000;
+
+function isNewer(a, b) {
+  const x = a.split(".").map(Number), y = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+
+async function checkUpdate(manual) {
+  // A dev host or a remote-only copy must not replace the user's local install.
+  if (ctx.extensionMode !== vscode.ExtensionMode.Production || ctx.extension.extensionKind !== vscode.ExtensionKind.UI) {
+    if (manual) vscode.window.showInformationMessage("Themepane: only a local install updates itself.");
+    return;
+  }
+  const state = ctx.globalState.get(UPDATE_STATE) || {};
+  if (!manual && Date.now() - (state.checked || 0) < DAY) return;
+  await ctx.globalState.update(UPDATE_STATE, { ...state, checked: Date.now() });
+  let release;
+  try {
+    const res = await fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "themepane" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error("GitHub answered " + res.status);
+    release = await res.json();
+  } catch (e) {
+    if (manual) vscode.window.showWarningMessage("Themepane couldn't check for updates: " + e.message);
+    return;
+  }
+  const latest = String(release.tag_name || "").replace(/^v/, "");
+  const running = ctx.extension.packageJSON.version;
+  if (!isNewer(latest, running) || (!manual && state.skip === latest)) {
+    if (manual) vscode.window.showInformationMessage("Themepane " + running + " is the latest version.");
+    return;
+  }
+  let choice;
+  do {
+    choice = await vscode.window.showInformationMessage(
+      "Themepane " + latest + " is available (you have " + running + ").", "Update", "What's New", "Skip This Version"
+    );
+    if (choice === "What's New") await vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+  } while (choice === "What's New");
+  if (choice === "Update") await installUpdate(release, latest);
+  else if (choice === "Skip This Version") {
+    await ctx.globalState.update(UPDATE_STATE, { ...(ctx.globalState.get(UPDATE_STATE) || {}), skip: latest });
+  }
+}
+
+// Download the release's VSIX into global storage and install it like "Install from VSIX…".
+async function installUpdate(release, version) {
+  const asset = (release.assets || []).find((a) => a.name === "themepane.vsix");
+  try {
+    if (!asset) throw new Error("the release has no themepane.vsix");
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Updating Themepane to " + version + "…" },
+      async () => {
+        const res = await fetch(asset.browser_download_url, { headers: { "User-Agent": "themepane" }, signal: AbortSignal.timeout(60000) });
+        if (!res.ok) throw new Error("the download failed (" + res.status + ")");
+        const file = vscode.Uri.joinPath(ctx.globalStorageUri, "themepane.vsix");
+        await vscode.workspace.fs.createDirectory(ctx.globalStorageUri);
+        await vscode.workspace.fs.writeFile(file, new Uint8Array(await res.arrayBuffer()));
+        await vscode.commands.executeCommand("workbench.extensions.installExtension", file);
+      }
+    );
+  } catch (e) {
+    const open = await vscode.window.showErrorMessage("Themepane couldn't update: " + e.message + ".", "Open Release");
+    if (open) vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+    return;
+  }
+  const reload = await vscode.window.showInformationMessage(
+    "Themepane " + version + " is installed. Reload to use it (other windows too).", "Reload Window"
+  );
+  if (reload) vscode.commands.executeCommand("workbench.action.reloadWindow");
 }
 
 // Whether a "[Theme A][Theme *]" block key applies to `theme`.
@@ -857,12 +937,14 @@ function activate(context) {
   checkElsewhere(true);
   warnCulprits();
   scheduleCheck();
+  checkUpdate(false).catch((e) => console.error("Themepane: update check failed", e));
   context.subscriptions.push(
     status,
     vscode.commands.registerCommand("projectColor.pick", pick),
     vscode.commands.registerCommand("projectColor.pickBackground", () => pickKnob("background")),
     vscode.commands.registerCommand("projectColor.pickAccent", () => pickKnob("accent")),
     vscode.commands.registerCommand("projectColor.cleanUp", cleanUp),
+    vscode.commands.registerCommand("projectColor.checkUpdates", () => checkUpdate(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("projectColor.workspaceOnly")) checkElsewhere(false);
       else if (e.affectsConfiguration("projectColor")) updateStatus();

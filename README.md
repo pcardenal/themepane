@@ -1,6 +1,6 @@
 <p align="center"><img src="images/banner.png" alt="Themepane" width="100%"></p>
 
-**Know which project you're in before you read a single tab.**
+**Know which project you're in at a glance**
 
 Themepane gives every VS Code window its own colour. Put the API in Forest, the front end
 in Ocean and the side project in Bordeaux, and when you switch between six open windows you
@@ -60,6 +60,9 @@ Or download `themepane.vsix` from the
 Extensions view in VS Code, click `…` and choose **Install from VSIX…**.
 
 Reload open windows afterwards. Windows you haven't coloured use Graphite with Cobalt.
+
+Themepane checks GitHub for a new release once a day and offers to install it; **Themepane:
+Check for Updates** checks right away.
 
 ## Pick your colours
 

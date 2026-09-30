@@ -2,7 +2,7 @@
   "name": "themepane",
   "displayName": "Themepane",
   "description": "A background tint and an accent colour per project, kept in the folder's settings or a workspace file outside the repo.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "pcardenal",
   "author": "Pol Cardenal",
   "license": "MIT",
@@ -52,6 +52,10 @@
       {
         "command": "projectColor.cleanUp",
         "title": "Themepane: Clean Up and Uninstall…"
+      },
+      {
+        "command": "projectColor.checkUpdates",
+        "title": "Themepane: Check for Updates"
       }
     ],
     "icons": {
@@ -60,6 +64,20 @@
         "default": {
           "fontPath": "images/themepane.woff",
           "fontCharacter": "\\E000"
+        }
+      },
+      "themepane-background": {
+        "description": "Themepane background (paint roller)",
+        "default": {
+          "fontPath": "images/themepane.woff",
+          "fontCharacter": "\\E001"
+        }
+      },
+      "themepane-accent": {
+        "description": "Themepane accent (paint brush)",
+        "default": {
+          "fontPath": "images/themepane.woff",
+          "fontCharacter": "\\E002"
         }
       }
     },
