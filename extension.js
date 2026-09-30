@@ -123,6 +123,11 @@ let workspaceFound = false;
 let conflict = null;
 let notified = null;
 const warnedCulprits = {};
+// The status item's hover opens when a menu closes over it, so menus hide it; only a color
+// pick brings it straight back, anything else after TIP_DELAY (the mouse has moved on).
+let tipHidden = false;
+let tipTimer;
+const TIP_DELAY = 3000;
 
 const config = (section) => vscode.workspace.getConfiguration(section);
 
@@ -384,6 +389,17 @@ function resumePick() {
   else pickKnob(pending.knob);
 }
 
+function hideTip() {
+  clearTimeout(tipTimer);
+  tipHidden = true;
+  updateStatus();
+}
+
+function showTip(delay) {
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => { tipHidden = false; updateStatus(); }, delay);
+}
+
 function withKnob(state, knob, hex) {
   return { ...state, [knob]: hex };
 }
@@ -400,6 +416,7 @@ function pickKnob(knob) {
     else vscode.window.showInformationMessage("Open a folder first.");
     return;
   }
+  hideTip();
   const spec = KNOBS[knob];
   const before = current();
   const mark = (hex) => ((before[knob] || null) === hex ? "  (current)" : "");
@@ -433,7 +450,10 @@ function pickKnob(knob) {
     if (!item) return;
     accepted = true;
     qp.hide();
-    if (!item.custom) return applyToWorkspace(withKnob(before, knob, item.hex));
+    if (!item.custom) {
+      showTip(0);
+      return applyToWorkspace(withKnob(before, knob, item.hex));
+    }
     const input = await vscode.window.showInputBox({
       title: "Themepane: " + spec.title,
       prompt: knob === "background"
@@ -442,10 +462,14 @@ function pickKnob(knob) {
       value: before[knob] || "",
       validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex color like #1c2a1f"),
     });
+    showTip(input ? 0 : TIP_DELAY);
     await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before);
   });
   qp.onDidHide(() => {
-    if (!accepted) applyToWorkspace(before);
+    if (!accepted) {
+      showTip(TIP_DELAY);
+      applyToWorkspace(before);
+    }
     qp.dispose();
   });
   qp.show();
@@ -457,6 +481,7 @@ async function pick() {
     vscode.window.showInformationMessage("Open a folder first.");
     return;
   }
+  hideTip();
   const state = current();
   const e = effective(state);
   const only = workspaceOnly();
@@ -493,6 +518,7 @@ async function pick() {
   items.push(...updateItems());
 
   const choice = await vscode.window.showQuickPick(items, { title: "Themepane" });
+  if (!choice || !choice.knob) showTip(TIP_DELAY);
   if (!choice) return;
   if (choice.toggle) {
     await config("projectColor").update("workspaceOnly", !only || undefined, vscode.ConfigurationTarget.Global);
@@ -837,6 +863,7 @@ function updateStatus() {
     status.text = status.text.replace("$(themepane-logo)", "$(arrow-circle-up)");
     status.tooltip += "\n\nThemepane " + latest.version + " is available. Update it from the menu.";
   }
+  if (tipHidden) status.tooltip = undefined;
   if (vscode.workspace.workspaceFolders) status.show();
   else status.hide();
 }
