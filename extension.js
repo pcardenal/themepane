@@ -219,12 +219,15 @@ async function writeJson(file, value) {
   await vscode.workspace.fs.writeFile(file, Buffer.from(JSON.stringify(value, null, 2) + "\n"));
 }
 
+// Global storage on this machine: VS Code hands out file: or, lately, vscode-userdata: URIs.
+const storageIsLocal = () => ["file", "vscode-userdata"].includes(ctx.globalStorageUri.scheme);
+
 // The note is written before the settings, so whatever gets set can be undone. Keys another
 // window noted first are kept: by now it may have set them, hiding the user's own value.
 async function applyLayout() {
   // revert.js runs from the local install, so a dev or remote copy leaves the layout alone.
   if (ctx.extensionMode !== vscode.ExtensionMode.Production || ctx.extension.extensionKind !== vscode.ExtensionKind.UI ||
-      ctx.globalStorageUri.scheme !== "file") return;
+      !storageIsLocal()) return;
   const noteFile = vscode.Uri.joinPath(ctx.globalStorageUri, "layout.json");
   const noted = async () => ((await readJson(noteFile)) || {}).keys || {};
   const cfg = vscode.workspace.getConfiguration();
@@ -646,11 +649,12 @@ async function installUpdate(latest) {
         const file = vscode.Uri.joinPath(ctx.globalStorageUri, "themepane.vsix");
         await vscode.workspace.fs.createDirectory(ctx.globalStorageUri);
         await vscode.workspace.fs.writeFile(file, new Uint8Array(await res.arrayBuffer()));
-        await vscode.commands.executeCommand("workbench.extensions.installExtension", file);
+        // Global storage can be a vscode-userdata: URI, which the installer rejects ("No Servers").
+        await vscode.commands.executeCommand("workbench.extensions.installExtension", vscode.Uri.file(file.fsPath));
       }
     );
   } catch (e) {
-    const open = await vscode.window.showErrorMessage("Themepane couldn't update: " + e.message + ".", "Open Release");
+    const open = await vscode.window.showErrorMessage("Themepane couldn't update: " + (e.message || e) + ".", "Open Release");
     if (open) vscode.env.openExternal(vscode.Uri.parse(latest.url));
     return;
   }
@@ -942,8 +946,8 @@ async function cleanUp() {
       await config("projectColor").update(name, undefined, vscode.ConfigurationTarget.Global);
     }
   }
-  // A remote copy's file: storage is the server's, not the user's settings.
-  if (ctx.extension.extensionKind === vscode.ExtensionKind.UI && ctx.globalStorageUri.scheme === "file") {
+  // A remote copy's storage is the server's, not the user's settings.
+  if (ctx.extension.extensionKind === vscode.ExtensionKind.UI && storageIsLocal()) {
     const settings = vscode.Uri.joinPath(ctx.globalStorageUri, "..", "..", "settings.json").fsPath;
     changed += revert.run(revert.OWN, [settings]).length;
   }
