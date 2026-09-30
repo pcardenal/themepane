@@ -2,28 +2,20 @@
 
 **Every project, its own color.**
 
-Stop reading title bars. Themepane colors each VS Code window, so the one you want is
-the one that looks right.
+Themepane colors each VS Code window, so you can find the right one without reading its
+title bar. The **background** frames the window, and the editor, sidebar and terminal float
+on it as dark panes. The **accent** runs through buttons, selections and the cursor. Your
+code keeps its usual colors.
 
-A **background** frames the window, with the editor, sidebar and terminal floating on it
-as dark panes. An **accent** runs through buttons, selections and the cursor. Your code
-looks exactly the same.
+There are 40 backgrounds and 40 accents, and any of the 1,600 pairs stays soft and
+readable. The backgrounds are 28 colors from Cameo to Amaranth (a few deeper, like Fathom
+and Lapis), 10 muted tints like Slate and Heather, Graphite (the default) and pure-black
+Obsidian. Accents come bold (Cobalt, Jade), dusty (Bronze, Pewter), pastel (Matcha, Peach)
+or pearly (Nacre, Opal), plus Snow. Each background has a matching accent, so one pick is
+enough, and **Custom…** takes any hex and tones it down so nothing glows.
 
 Click **Themepane** in the status bar, pick **Background** or **Accent**, and scroll: the
-window changes as you go. Enter keeps a color, Esc goes back. Or run **Themepane: Pick
-Colors…**, **Pick Background…** or **Pick Accent…** from the Command Palette.
-
-## Mix and match
-
-Any of 40 backgrounds with any of 40 accents: 1,600 pairs, all soft, all readable.
-
-- **Backgrounds**: 28 colors from Cameo to Amaranth (a few deeper, like Fathom and Lapis),
-  10 muted tints like Slate and Heather, Graphite (the default) and pure-black Obsidian.
-- **Accents**: bold Cobalt and Jade, dusty Bronze and Pewter, pastel Matcha and Peach,
-  pearly Nacre and Opal, and Snow, a gray that turns Obsidian black and white.
-
-Every background comes with a matching accent, so one pick is enough. Or type any hex
-with **Custom…**: it's toned down so nothing glows.
+window changes as you go. Enter keeps a color, Esc goes back.
 
 ## Install
 
