@@ -1,7 +1,7 @@
 "use strict";
 
 // The vscode:uninstall hook, also run by Themepane: Clean Up: puts back the layout settings
-// Themepane set, unless changed since, and removes its colours from every profile's user settings.
+// Themepane set, unless changed since, and removes its colors from every profile's user settings.
 
 const fs = require("fs");
 const path = require("path");
@@ -26,7 +26,7 @@ function parse(text) {
   return errors.length || !root || typeof root !== "object" ? null : root;
 }
 
-// `text` without Themepane's colours in the settings at `base` ([] or ["settings"]), and
+// `text` without Themepane's colors in the settings at `base` ([] or ["settings"]), and
 // without the `own` settings. workbench.colorCustomizations goes once nothing else is left.
 // Returns null when the text isn't valid JSON.
 function strip(text, base, own = []) {
@@ -110,7 +110,7 @@ function run(own = [], known = []) {
   notes().map(revert).filter(Boolean).concat(known).forEach((s) => profileSettings(s).forEach((f) => files.add(f)));
   return Array.from(files).filter((f) => {
     const changed = edit(f, (text) => strip(text, [], own));
-    if (changed) console.log("  colours removed: " + f);
+    if (changed) console.log("  colors removed: " + f);
     return changed;
   });
 }

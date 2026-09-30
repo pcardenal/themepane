@@ -7,7 +7,7 @@ const vscode = require("vscode");
 const tint = require("./tint");
 const revert = require("./revert");
 
-// Frame colours, each with its linked accent. Order: Graphite (the default), colours
+// Frame colors, each with its linked accent. Order: Graphite (the default), colors
 // in rainbow order, muted tints in rainbow order, then Obsidian.
 const BACKGROUNDS = [
   { icon: "✏️", name: "Graphite", hex: "#313336", accent: "Cobalt" },
@@ -116,10 +116,10 @@ const IGNORED = "themepane.ignoredConflict";
 let ctx;
 let status;
 // Outside a saved workspace: the Themepane workspace for these folders ({ file, state })
-// if it has colours, and whether its file exists at all.
+// if it has colors, and whether its file exists at all.
 let elsewhere = null;
 let workspaceFound = false;
-// Colours changed by something else ({ keys, culprit, sig }), and the last one warned about.
+// Colors changed by something else ({ keys, culprit, sig }), and the last one warned about.
 let conflict = null;
 let notified = null;
 const warnedCulprits = {};
@@ -187,8 +187,8 @@ function differs(a, b) {
   return Object.keys(a).concat(Object.keys(b)).some((k) => a[k] !== b[k]);
 }
 
-// `existing` colour customizations with Themepane's keys redrawn for `state`;
-// a state with nothing set carries no colours and inherits the user default.
+// `existing` color customizations with Themepane's keys redrawn for `state`;
+// a state with nothing set carries no colors and inherits the user default.
 function merged(existing, state) {
   const colors = { ...existing };
   tint.KEYS.forEach((k) => delete colors[k]);
@@ -334,7 +334,7 @@ async function findElsewhere() {
 }
 
 // Reopen through this window's Themepane workspace, creating it with the folder's own
-// colours if needed. `knob` ("menu" for the main menu) opens that picker after the reload.
+// colors if needed. `knob` ("menu" for the main menu) opens that picker after the reload.
 async function reopenInWorkspace(knob) {
   const folders = vscode.workspace.workspaceFolders;
   const file = workspaceFileFor(folders);
@@ -434,10 +434,10 @@ function pickKnob(knob) {
     const input = await vscode.window.showInputBox({
       title: "Themepane: " + spec.title,
       prompt: knob === "background"
-        ? "Hex colour for the frame, e.g. #1f4a33. The panes get a deep shade of it. Keep it dark enough for light text."
-        : "Hex colour, e.g. #d9bb66. Light colours get dark button text; colourfulness is capped so nothing glows.",
+        ? "Hex color for the frame, e.g. #1f4a33. The panes get a deep shade of it. Keep it dark enough for light text."
+        : "Hex color, e.g. #d9bb66. Light colors get dark button text; colorfulness is capped so nothing glows.",
       value: before[knob] || "",
-      validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex colour like #1c2a1f"),
+      validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex color like #1c2a1f"),
     });
     await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before);
   });
@@ -448,7 +448,7 @@ function pickKnob(knob) {
   qp.show();
 }
 
-// The main menu: conflict actions, the two knobs, then where colours are kept.
+// The main menu: conflict actions, the two knobs, then where colors are kept.
 async function pick() {
   if (!vscode.workspace.workspaceFolders) {
     vscode.window.showInformationMessage("Open a folder first.");
@@ -460,7 +460,7 @@ async function pick() {
   const separator = { label: "", kind: vscode.QuickPickItemKind.Separator };
   const items = [];
   if (conflict) {
-    items.push({ label: "$(warning)  Restore colours", description: conflictText(conflict), restore: true });
+    items.push({ label: "$(warning)  Restore colors", description: conflictText(conflict), restore: true });
     if (conflict.culprit) {
       items.push({ label: "$(trash)  Uninstall " + conflict.culprit.name, description: "for the full tint", culprit: true });
     }
@@ -478,15 +478,16 @@ async function pick() {
     const file = workspaceFileFor(vscode.workspace.workspaceFolders);
     items.push({
       label: "$(window)  Reopen in workspace",
-      description: (elsewhere ? pairName(elsewhere.state) : workspaceFound ? "No colours yet" : "Create") + "  · " + shortPath(file),
+      description: (elsewhere ? pairName(elsewhere.state) : workspaceFound ? "No colors yet" : "Create") + "  · " + shortPath(file),
       reopen: true,
     });
   }
   items.push({
     label: (only ? "$(lock)" : "$(unlock)") + "  Workspace only",
-    description: only ? "On · folders open as a workspace to be coloured" : "Off · folders keep colours in .vscode/settings.json",
+    description: only ? "On · folders open as a workspace to be colored" : "Off · folders keep colors in .vscode/settings.json",
     toggle: true,
   });
+  items.push(...updateItems());
 
   const choice = await vscode.window.showQuickPick(items, { title: "Themepane" });
   if (!choice) return;
@@ -499,12 +500,16 @@ async function pick() {
   if (choice.ignore) return ignoreConflict(conflict);
   if (choice.reopen) return reopenInWorkspace(elsewhere || isCustom(state) ? null : "menu");
   if (choice.clear) return applyToWorkspace({ background: null, accent: null });
+  if (choice.check) return checkUpdate(true);
+  if (choice.update) return installUpdate(choice.update);
+  if (choice.skipUpdate) return saveUpdateState({ skip: choice.skipUpdate.version });
+  if (choice.reload) return vscode.commands.executeCommand("workbench.action.reloadWindow");
   pickKnob(choice.knob);
 }
 
 // Extensions that fight Themepane: some rewrite colorCustomizations, others patch VS Code's files.
-const REWRITES = "rewrites the title bar, status bar and activity bar colours";
-const PATCHES = "patches VS Code's files, and its styles can cover Themepane's colours";
+const REWRITES = "rewrites the title bar, status bar and activity bar colors";
+const PATCHES = "patches VS Code's files, and its styles can cover Themepane's colors";
 const CULPRITS = [
   { id: "johnpapa.vscode-peacock", name: "Peacock", why: REWRITES },
   { id: "stuart.unique-window-colors", name: "Window Colors", why: REWRITES },
@@ -546,10 +551,20 @@ function uninstallCulprit(c) {
 }
 
 // VS Code never checks a VSIX install for updates, so Themepane asks GitHub itself: once a
-// day on startup, or on demand from the command. State: { checked, skip } in globalState.
+// day after 9:00, or from the menu. State: { checked, skip, latest: { version, url, vsix } }.
 const REPO = "pcardenal/themepane";
 const UPDATE_STATE = "themepane.update";
-const DAY = 24 * 60 * 60 * 1000;
+const CHECK_HOUR = 9;
+// Soft green for the status bar item while an update waits; ≥ 6:1 on every preset frame.
+const UPDATE_COLOR = "#a5e0a5";
+let installed = null; // the version this window installed, until it reloads
+
+// The latest 9:00 local time that has passed; a check older than it is due.
+function lastCheckTime() {
+  const t = new Date();
+  if (t.getHours() < CHECK_HOUR) t.setDate(t.getDate() - 1);
+  return t.setHours(CHECK_HOUR, 0, 0, 0);
+}
 
 function isNewer(a, b) {
   const x = a.split(".").map(Number), y = b.split(".").map(Number);
@@ -557,55 +572,76 @@ function isNewer(a, b) {
   return false;
 }
 
+// A dev host or a remote-only copy must not replace the user's local install.
+function canUpdate() {
+  return ctx.extensionMode === vscode.ExtensionMode.Production && ctx.extension.extensionKind === vscode.ExtensionKind.UI;
+}
+
+// The newer release the last check found, unless it was skipped or this window installed it.
+function pendingUpdate() {
+  const state = ctx.globalState.get(UPDATE_STATE) || {};
+  const latest = state.latest;
+  if (!canUpdate() || installed || !latest || state.skip === latest.version) return null;
+  return isNewer(latest.version, ctx.extension.packageJSON.version) ? latest : null;
+}
+
+async function saveUpdateState(change) {
+  await ctx.globalState.update(UPDATE_STATE, { ...(ctx.globalState.get(UPDATE_STATE) || {}), ...change });
+  updateStatus();
+}
+
+async function fetchLatest() {
+  const res = await fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "themepane" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error("GitHub answered " + res.status);
+  const release = await res.json();
+  const asset = (release.assets || []).find((a) => a.name === "themepane.vsix");
+  return { version: String(release.tag_name || "").replace(/^v/, ""), url: release.html_url, vsix: asset && asset.browser_download_url };
+}
+
 async function checkUpdate(manual) {
-  // A dev host or a remote-only copy must not replace the user's local install.
-  if (ctx.extensionMode !== vscode.ExtensionMode.Production || ctx.extension.extensionKind !== vscode.ExtensionKind.UI) {
+  if (!canUpdate()) {
     if (manual) vscode.window.showInformationMessage("Themepane: only a local install updates itself.");
     return;
   }
   const state = ctx.globalState.get(UPDATE_STATE) || {};
-  if (!manual && Date.now() - (state.checked || 0) < DAY) return;
-  await ctx.globalState.update(UPDATE_STATE, { ...state, checked: Date.now() });
-  let release;
+  if (!manual && (state.checked || 0) >= lastCheckTime()) return;
+  await saveUpdateState({ checked: Date.now() });
+  let latest;
   try {
-    const res = await fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "themepane" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) throw new Error("GitHub answered " + res.status);
-    release = await res.json();
+    latest = await fetchLatest();
   } catch (e) {
+    await saveUpdateState({ checked: state.checked }); // retry on the next tick
     if (manual) vscode.window.showWarningMessage("Themepane couldn't check for updates: " + e.message);
     return;
   }
-  const latest = String(release.tag_name || "").replace(/^v/, "");
+  await saveUpdateState({ latest });
   const running = ctx.extension.packageJSON.version;
-  if (!isNewer(latest, running) || (!manual && state.skip === latest)) {
+  if (!isNewer(latest.version, running) || (!manual && state.skip === latest.version)) {
     if (manual) vscode.window.showInformationMessage("Themepane " + running + " is the latest version.");
     return;
   }
   let choice;
   do {
     choice = await vscode.window.showInformationMessage(
-      "Themepane " + latest + " is available (you have " + running + ").", "Update", "What's New", "Skip This Version"
+      "Themepane " + latest.version + " is available (you have " + running + ").", "Update", "What's New", "Skip This Version"
     );
-    if (choice === "What's New") await vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+    if (choice === "What's New") await vscode.env.openExternal(vscode.Uri.parse(latest.url));
   } while (choice === "What's New");
-  if (choice === "Update") await installUpdate(release, latest);
-  else if (choice === "Skip This Version") {
-    await ctx.globalState.update(UPDATE_STATE, { ...(ctx.globalState.get(UPDATE_STATE) || {}), skip: latest });
-  }
+  if (choice === "Update") await installUpdate(latest);
+  else if (choice === "Skip This Version") await saveUpdateState({ skip: latest.version });
 }
 
 // Download the release's VSIX into global storage and install it like "Install from VSIX…".
-async function installUpdate(release, version) {
-  const asset = (release.assets || []).find((a) => a.name === "themepane.vsix");
+async function installUpdate(latest) {
   try {
-    if (!asset) throw new Error("the release has no themepane.vsix");
+    if (!latest.vsix) throw new Error("the release has no themepane.vsix");
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Updating Themepane to " + version + "…" },
+      { location: vscode.ProgressLocation.Notification, title: "Updating Themepane to " + latest.version + "…" },
       async () => {
-        const res = await fetch(asset.browser_download_url, { headers: { "User-Agent": "themepane" }, signal: AbortSignal.timeout(60000) });
+        const res = await fetch(latest.vsix, { headers: { "User-Agent": "themepane" }, signal: AbortSignal.timeout(60000) });
         if (!res.ok) throw new Error("the download failed (" + res.status + ")");
         const file = vscode.Uri.joinPath(ctx.globalStorageUri, "themepane.vsix");
         await vscode.workspace.fs.createDirectory(ctx.globalStorageUri);
@@ -615,13 +651,30 @@ async function installUpdate(release, version) {
     );
   } catch (e) {
     const open = await vscode.window.showErrorMessage("Themepane couldn't update: " + e.message + ".", "Open Release");
-    if (open) vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+    if (open) vscode.env.openExternal(vscode.Uri.parse(latest.url));
     return;
   }
+  installed = latest.version;
+  updateStatus();
   const reload = await vscode.window.showInformationMessage(
-    "Themepane " + version + " is installed. Reload to use it (other windows too).", "Reload Window"
+    "Themepane " + latest.version + " is installed. Reload to use it (other windows too).", "Reload Window"
   );
   if (reload) vscode.commands.executeCommand("workbench.action.reloadWindow");
+}
+
+// The menu's last section: update and skip while one waits, otherwise check (or reload).
+function updateItems() {
+  if (!canUpdate()) return [];
+  const running = ctx.extension.packageJSON.version;
+  const separator = { label: "", kind: vscode.QuickPickItemKind.Separator };
+  if (installed) return [separator, { label: "$(refresh)  Reload to finish updating", description: installed, reload: true }];
+  const latest = pendingUpdate();
+  if (!latest) return [separator, { label: "$(sync)  Check for updates", description: running, check: true }];
+  return [
+    separator,
+    { label: "$(arrow-circle-up)  Update Themepane", description: running + " → " + latest.version, update: latest },
+    { label: "$(debug-step-over)  Skip update", description: latest.version, skipUpdate: latest },
+  ];
 }
 
 // Whether a "[Theme A][Theme *]" block key applies to `theme`.
@@ -641,7 +694,7 @@ function holdsKeys(colors) {
   return !!colors && tint.KEYS.some((k) => colors[k] !== undefined);
 }
 
-// Compare the merged colours, with blocks for the current theme on top, to what
+// Compare the merged colors, with blocks for the current theme on top, to what
 // this window's pair should produce.
 function findConflict() {
   const wb = config("workbench");
@@ -681,18 +734,18 @@ function scheduleCheck() {
 }
 
 function conflictText(c) {
-  return c.keys.length + (c.keys.length === 1 ? " colour was" : " colours were") + " changed by " +
+  return c.keys.length + (c.keys.length === 1 ? " color was" : " colors were") + " changed by " +
     (c.culprit ? c.culprit.name : "something else");
 }
 
 async function warnConflict(c) {
   const remove = c.culprit && "Uninstall " + c.culprit.name;
-  const buttons = ["Restore colours", ...(remove ? [remove] : []), "Don't warn again"];
+  const buttons = ["Restore colors", ...(remove ? [remove] : []), "Don't warn again"];
   const choice = await vscode.window.showWarningMessage(
     "Themepane: " + conflictText(c) + ". Restore them, or remove whatever is rewriting workbench.colorCustomizations.",
     ...buttons
   );
-  if (choice === "Restore colours") restore();
+  if (choice === "Restore colors") restore();
   else if (remove && choice === remove) uninstallCulprit(c.culprit);
   else if (choice === "Don't warn again") ignoreConflict(c);
 }
@@ -705,7 +758,7 @@ async function ignoreConflict(c) {
 
 // Whether the window's own settings already hold Themepane values, which restore()
 // corrects even with workspace only on.
-function hasOwnColours() {
+function hasOwnColors() {
   const colors = config("workbench").inspect("colorCustomizations").workspaceValue || {};
   return isCustom(current()) || holdsKeys(colors) ||
     Object.keys(colors).some((b) => b[0] === "[" && holdsKeys(colors[b]));
@@ -725,14 +778,14 @@ function withoutThemeKeys(value, theme) {
   return next;
 }
 
-// Put this window's colours back: clear theme blocks, then rewrite the user default
+// Put this window's colors back: clear theme blocks, then rewrite the user default
 // and the workspace, where allowed or where it already holds Themepane's values.
 async function restore() {
   const wb = config("workbench");
   const theme = wb.get("colorTheme");
   const info = wb.inspect("colorCustomizations");
   const T = vscode.ConfigurationTarget;
-  const own = writable() || (!!vscode.workspace.workspaceFolders && hasOwnColours());
+  const own = writable() || (!!vscode.workspace.workspaceFolders && hasOwnColors());
   const targets = [[T.Global, info.globalValue]];
   if (own) targets.push([T.Workspace, info.workspaceValue]);
   await enqueue(async () => {
@@ -757,7 +810,7 @@ function updateStatus() {
   if (leaving) return status.hide();
   if (!writable()) {
     status.text = "$(themepane-logo) Themepane · Disabled";
-    status.tooltip = "Themepane\nWorkspace only: colours apply inside workspaces." +
+    status.tooltip = "Themepane\nWorkspace only: colors apply inside workspaces." +
       (elsewhere ? "\n" + pairName(elsewhere.state) + " is saved in " + shortPath(elsewhere.file) + "." : "") +
       "\nClick to reopen in one.";
   } else {
@@ -774,6 +827,12 @@ function updateStatus() {
     status.tooltip = "Themepane: " + conflictText(conflict) + ".\nClick to restore.\n\n" + status.tooltip;
   }
   status.backgroundColor = conflict || !writable() ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
+  const latest = !conflict && writable() && pendingUpdate();
+  status.color = latest ? UPDATE_COLOR : undefined;
+  if (latest) {
+    status.text = status.text.replace("$(themepane-logo)", "$(arrow-circle-up)");
+    status.tooltip += "\n\nThemepane " + latest.version + " is available. Update it from the menu.";
+  }
   if (vscode.workspace.workspaceFolders) status.show();
   else status.hide();
 }
@@ -844,16 +903,16 @@ async function rememberedSettings() {
 }
 
 // Uninstall first and strip after, with no reload between: a running Themepane writes its
-// colours back on activation. The user settings of every profile go through revert.js.
+// colors back on activation. The user settings of every profile go through revert.js.
 let leaving = false;
 async function cleanUp() {
   const { files, skipped } = await rememberedSettings();
   const go = "Clean Up and Uninstall";
   const choice = await vscode.window.showWarningMessage(
-    "Uninstall Themepane and remove its colours everywhere?",
+    "Uninstall Themepane and remove its colors everywhere?",
     {
       modal: true,
-      detail: "Removes Themepane's colours and settings from your user settings and from " + files.length +
+      detail: "Removes Themepane's colors and settings from your user settings and from " + files.length +
         " workspace and folder settings file(s) it can reach, and puts back the layout settings it changed.",
     },
     go
@@ -866,7 +925,7 @@ async function cleanUp() {
     await vscode.commands.executeCommand("workbench.extensions.uninstallExtension", ctx.extension.id);
   } catch (e) {
     leaving = false;
-    vscode.window.showErrorMessage("Themepane couldn't uninstall itself, so no colours were removed: " + e.message);
+    vscode.window.showErrorMessage("Themepane couldn't uninstall itself, so no colors were removed: " + e.message);
     return;
   }
   status.hide();
@@ -896,7 +955,7 @@ async function cleanUp() {
     changed++;
   }
   vscode.window.showInformationMessage(
-    "Themepane is uninstalled and its colours are gone from " + changed + " settings file(s). Reload other open windows.",
+    "Themepane is uninstalled and its colors are gone from " + changed + " settings file(s). Reload other open windows.",
     {
       modal: !!skipped.length,
       detail: skipped.length ? "Not reachable from this window, check these by hand:\n" + skipped.join("\n") : undefined,
@@ -904,7 +963,7 @@ async function cleanUp() {
   );
 }
 
-// Bring this window's colours up to date with tint.js, and move a retired preset on.
+// Bring this window's colors up to date with tint.js, and move a retired preset on.
 function refresh() {
   const state = current();
   if (!writable() || !isCustom(state)) return;
@@ -917,7 +976,7 @@ function refresh() {
 }
 
 // Find this folder's Themepane workspace; on startup, reopen through it when the user
-// asked for that and the folder has no colours of its own.
+// asked for that and the folder has no colors of its own.
 async function checkElsewhere(startup) {
   await findElsewhere();
   updateStatus();
@@ -937,8 +996,13 @@ function activate(context) {
   checkElsewhere(true);
   warnCulprits();
   scheduleCheck();
-  checkUpdate(false).catch((e) => console.error("Themepane: update check failed", e));
+  const autoCheck = () => checkUpdate(false).catch((e) => console.error("Themepane: update check failed", e));
+  autoCheck();
+  // Open windows check hourly, focused ones only, so the notification shows where the user is.
+  const hourly = setInterval(() => vscode.window.state.focused && autoCheck(), 60 * 60 * 1000);
   context.subscriptions.push(
+    { dispose: () => clearInterval(hourly) },
+    vscode.window.onDidChangeWindowState((w) => w.focused && autoCheck()),
     status,
     vscode.commands.registerCommand("projectColor.pick", pick),
     vscode.commands.registerCommand("projectColor.pickBackground", () => pickKnob("background")),

@@ -19,4 +19,4 @@
   <circle cx="128" cy="189" r="8.5" fill="url(#rivet)" stroke="#000" stroke-opacity="0.5" stroke-width="1.5"/><circle cx="128" cy="189" r="3" fill="#2a2a2e" opacity="0.7"/>
   <circle cx="128" cy="128" r="126.5" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="3" mask="url(#rimmask)"/></svg>
   <text x="368" y="170" font-family="Segoe UI" font-weight="600" font-size="112" fill="#ffffff" letter-spacing="-1">Themepane</text>
-  <text x="372" y="228" font-family="Segoe UI" font-size="34" fill="#b8b8c0">A colour for every VS Code window</text></svg>
+  <text x="372" y="228" font-family="Segoe UI" font-size="34" fill="#b8b8c0">A color for every VS Code window</text></svg>

@@ -1,53 +1,39 @@
 <p align="center"><img src="images/banner.png" alt="Themepane" width="100%"></p>
 
-**Know which project you're in at a glance**
+**Every project, its own color.**
 
-Themepane gives every VS Code window its own colour. Put the API in Forest, the front end
-in Ocean and the side project in Bordeaux, and when you switch between six open windows you
-find the right one by colour.
+Stop reading title bars. Themepane colors each VS Code window, so the one you want is
+the one that looks right.
 
-Each project gets two picks:
+A **background** frames the window, with the editor, sidebar and terminal floating on it
+as dark panes. An **accent** runs through buttons, selections and the cursor. Your code
+looks exactly the same.
 
-- A **background** for the frame of the window: title bar, activity bar, status bar and
-  tab strip. The editor, sidebars and terminal sit on it as darker panes in the same hue.
-- An **accent** for buttons, badges, selections, the cursor and focus rings.
+Click **Themepane** in the status bar, pick **Background** or **Accent**, and scroll: the
+window changes as you go. Enter keeps a color, Esc goes back. Or run **Themepane: Pick
+Colors…**, **Pick Background…** or **Pick Accent…** from the Command Palette.
 
-Syntax highlighting, diffs and error colours stay as Dark Modern draws them, so your code
-looks the same in every project.
+## Mix and match
 
-## 1,600 combinations, plus any hex
+Any of 40 backgrounds with any of 40 accents: 1,600 pairs, all soft, all readable.
 
-There are 40 backgrounds and 40 accents, and any background goes with any accent.
+- **Backgrounds**: 28 colors from Cameo to Amaranth (a few deeper, like Fathom and Lapis),
+  10 muted tints like Slate and Heather, Graphite (the default) and pure-black Obsidian.
+- **Accents**: bold Cobalt and Jade, dusty Bronze and Pewter, pastel Matcha and Peach,
+  pearly Nacre and Opal, and Snow, a gray that turns Obsidian black and white.
 
-The backgrounds are 28 colours around the colour wheel (Cameo, Garnet, Ochre, Moss,
-Lagoon, Sapphire, Plum and more), 10 muted tints such as Driftwood, Slate and Heather,
-Graphite, which is the default, and Obsidian, which is pure black. A few deeper shades,
-like Cordovan, Fathom, Lapis and Sumi, keep the panes close to the frame for a quieter
-window.
-
-The accents come in four kinds: saturated mid-tones like Cobalt, Jade and Carmine, dusty
-ones like Madder, Bronze and Pewter, light pastels like Matcha, Peach and Periwinkle, and
-pearls like Nacre and Opal. Snow turns the accent grey, and with Obsidian it gives a black
-and white window.
-
-Every background comes with an accent chosen to suit it, so one pick gives a finished
-look. Choose a different accent to make the pair your own, or type any hex colour for
-either one. Colours are kept soft: even a bright custom hex is toned down so nothing
-glows, and text stays readable on all 1,600 pairs.
+Every background comes with a matching accent, so one pick is enough. Or type any hex
+with **Custom…**: it's toned down so nothing glows.
 
 ## Install
 
 Themepane isn't on the Marketplace. It installs from its GitHub release with one command.
 
-On Linux, macOS, WSL or Git Bash on Windows:
+On Linux, macOS or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pcardenal/themepane/main/install.sh | bash
 ```
-
-The script finds VS Code and installs the latest release into it. If VS Code isn't
-installed, it shows the command that gets it and offers to run it for you. From WSL it
-installs into VS Code on Windows, so one install covers both local and WSL windows.
 
 In Windows PowerShell:
 
@@ -55,83 +41,29 @@ In Windows PowerShell:
 iwr https://github.com/pcardenal/themepane/releases/latest/download/themepane.vsix -OutFile $env:TEMP\themepane.vsix; code --install-extension $env:TEMP\themepane.vsix
 ```
 
-Or download `themepane.vsix` from the
-[latest release](https://github.com/pcardenal/themepane/releases/latest), open the
-Extensions view in VS Code, click `…` and choose **Install from VSIX…**.
+## Under the hood
 
-Reload open windows afterwards. Windows you haven't coloured use Graphite with Cobalt.
+Every color is a plain `workbench.colorCustomizations` setting, so VS Code updates can't
+break Themepane, and it works in local and remote windows, including WSL. The default
+pair lives in your user settings; a project's colors live in its `.code-workspace` file or
+`.vscode/settings.json`. Palette updates reach them on the next reload.
 
-Themepane checks GitHub for a new release once a day and offers to install it; **Themepane:
-Check for Updates** checks right away.
-
-## Pick your colours
-
-Click **Themepane** in the status bar, or run **Themepane: Pick Colours…**, then choose
-**Background** or **Accent**. The arrow keys preview each colour on the window as you go,
-and Esc puts the old one back. **Themepane: Pick Background…** and **Pick Accent…** open
-one list directly.
-
-**Linked to background**, at the top of the accents, goes back to the accent that comes
-with the background. **Custom…** takes any hex colour, and **Reset to default** clears
-both.
-
-The status bar shows the background, such as **Forest**, and adds the accent when it isn't
-the linked one, such as **Forest · Coral**.
-
-## Where colours are saved
-
-By default the colours go into the project's own settings: the `.code-workspace` file in a
-workspace, or `.vscode/settings.json` for a folder opened on its own. They travel with the
-project.
-
-### Workspace only
-
-`.vscode/settings.json` is often committed. If yours is, your teammates get your colours
-too. To keep Themepane out of your repos, turn on **Workspace only** at the bottom of the
-Themepane menu.
-
-Themepane then never writes into a folder. A folder opened on its own gets a workspace
-file beside it, at `<parent>/.workspaces/<folder>.code-workspace`, outside the repo where
-git doesn't see it. **Reopen in workspace** switches the window to that file and opens the
-picker there.
-
-Until you reopen, the status bar reads **Themepane · Disabled** in yellow, and its tooltip
-names the colours waiting in the workspace. Set `projectColor.reopenWorkspace` to `true` to
-switch over automatically whenever that workspace already has colours.
-
-**Reopen in workspace** is in the menu with Workspace only off too. It brings the folder's
-current colours along.
-
-## How it works
-
-Every colour is a plain `workbench.colorCustomizations` setting on top of Dark Modern.
-Themepane doesn't patch VS Code files, so VS Code updates can't break it. It works in local
-and remote windows, including WSL. The default pair sits in your user settings, and each
-project keeps its own.
-
-Themepane is drawn for VS Code's modern layout: floating panes with rounded corners and
-pill-shaped tabs. It turns both on in your user settings the first time it runs, and puts
-back whatever you had when you uninstall it. Change them afterwards and your choice stays.
-
-When a new version refines the palette, your projects pick up the new shades on the next
-reload without you picking again.
-
-If another extension or a settings block for your theme overrides Themepane's colours, the
-status bar button turns yellow and reads **Themepane · Warning**, and the menu offers to
-restore them. Themepane also suggests uninstalling theming extensions known to clash with
-it, such as Peacock, each time a project opens, until you choose **Don't warn again**.
+- **Workspace only**, at the bottom of the menu, keeps Themepane out of your repos. A
+  folder then gets a workspace file in `<parent>/.workspaces/`, outside git, and **Reopen
+  in workspace** switches to it (`projectColor.reopenWorkspace` does that automatically).
+- **Layout**: Themepane turns on VS Code's modern layout with pill tabs, and puts your old
+  settings back when you uninstall.
+- **Conflicts**: if something overrides the colors, the status bar reads **Themepane ·
+  Warning** and the menu offers to restore them. Clashing extensions like Peacock get
+  flagged.
+- **Updates**: Themepane checks GitHub daily. A new release turns the status bar item green
+  and adds **Update Themepane** to the menu.
 
 ## Uninstall
 
-Uninstall Themepane from the Extensions view, or with
-`code --uninstall-extension pcardenal.themepane`. The next time VS Code starts, your layout
-settings go back to what you had and the default colours leave your user settings, so
-uncoloured windows return to plain Dark Modern. Each project keeps its own colours, and
-they come back if you reinstall.
+Uninstall it from the Extensions view. On the next start your layout and default colors
+go back to how they were. Projects keep their colors, ready for a reinstall.
 
-To remove every colour as well, run **Themepane: Clean Up and Uninstall…** instead. It
-uninstalls Themepane and strips its colours and settings from your user settings (in
-every profile), from every workspace VS Code remembers and from each remembered folder's
-`.vscode/settings.json`. Everything else in those files stays as it was. Remote
-workspaces the window can't reach, such as SSH or containers, are listed so you can clear
-them by hand.
+To wipe those too, run **Themepane: Clean Up and Uninstall…**. It removes every Themepane
+color and setting from your user settings and every workspace and folder VS Code
+remembers, and lists any remote ones it can't reach.

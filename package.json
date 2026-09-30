@@ -1,8 +1,8 @@
 {
   "name": "themepane",
   "displayName": "Themepane",
-  "description": "A background tint and an accent colour per project, kept in the folder's settings or a workspace file outside the repo.",
-  "version": "1.0.1",
+  "description": "A background tint and an accent color per project, kept in the folder's settings or a workspace file outside the repo.",
+  "version": "1.0.2",
   "publisher": "pcardenal",
   "author": "Pol Cardenal",
   "license": "MIT",
@@ -39,7 +39,7 @@
     "commands": [
       {
         "command": "projectColor.pick",
-        "title": "Themepane: Pick Colours…"
+        "title": "Themepane: Pick Colors…"
       },
       {
         "command": "projectColor.pickBackground",
@@ -106,13 +106,13 @@
           "type": "boolean",
           "default": false,
           "scope": "application",
-          "description": "When a folder is opened on its own but Themepane has coloured it in a workspace, reopen the window through that workspace."
+          "description": "When a folder is opened on its own but Themepane has colored it in a workspace, reopen the window through that workspace."
         },
         "projectColor.workspaceOnly": {
           "type": "boolean",
           "default": false,
           "scope": "application",
-          "description": "Keep colours out of every folder's .vscode/settings.json. A folder opened on its own is reopened through a workspace file in <parent>/.workspaces/ to be coloured."
+          "description": "Keep colors out of every folder's .vscode/settings.json. A folder opened on its own is reopened through a workspace file in <parent>/.workspaces/ to be colored."
         }
       }
     }

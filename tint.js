@@ -1,9 +1,9 @@
 "use strict";
 
-// The palette: Dark Modern's greys and blues redrawn in a background and an accent.
+// The palette: Dark Modern's grays and blues redrawn in a background and an accent.
 // Pure functions over hex strings, runnable in plain node.
 
-// Dark Modern's neutral greys. Editor keys use the sidebar's #181818 so all panes match.
+// Dark Modern's neutral grays. Editor keys use the sidebar's #181818 so all panes match.
 const BASE = {
   "editor.background": "#181818",
   "editorGutter.background": "#181818",
@@ -147,7 +147,7 @@ const ACCENT = {
   "chat.requestCodeBorder": "#004972b8",
   "inputValidation.infoBackground": "#063b49",
   "inputValidation.infoBorder": "#007acc",
-  // Cursors default to grey; they take the link colour so they stand out.
+  // Cursors default to gray; they take the link color so they stand out.
   "editorCursor.foreground": "#4daafc",
   "terminalCursor.foreground": "#4daafc",
 };
@@ -189,14 +189,14 @@ function toHex(h, s, l) {
   return hexOf(rgb.map((v) => (v + m) * 255));
 }
 
-// Re-hue a grey to the pane tone, shifting its lightness by `shift`; alpha is kept.
+// Re-hue a gray to the pane tone, shifting its lightness by `shift`; alpha is kept.
 function tint(base, pane, shift) {
   const l = Math.min(1, Math.max(0, toHsl(base).l + shift));
   return toHex(pane.h, pane.s, l) + base.slice(7);
 }
 
 // Lightness and chroma are measured in OKLCH, which is perceptual: HSL would
-// turn greens and yellows into highlighter colours.
+// turn greens and yellows into highlighter colors.
 function lin(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
 function gam(v) { return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
 
@@ -227,7 +227,7 @@ function inGamut(rgb) {
   return rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4);
 }
 
-// Out-of-gamut colours lose chroma, never hue or lightness.
+// Out-of-gamut colors lose chroma, never hue or lightness.
 function fromOklch(L, C, h) {
   let rgb = oklchToRgb(L, C, h);
   if (!inGamut(rgb)) {
@@ -280,7 +280,7 @@ const MARKS = [
   "tab.activeModifiedBorder",
 ];
 
-// Accent text on the panes, all one colour: the fill if it's as light as Dark
+// Accent text on the panes, all one color: the fill if it's as light as Dark
 // Modern's link, otherwise the link's lightness at the fill's chroma.
 const INK = [
   "editorCursor.foreground",
@@ -361,14 +361,14 @@ function paneOf(frame) {
 }
 
 // Every key Themepane owns for a background and an accent (either may be null).
-// No accent borrows the background's hue; a grey source leaves Dark Modern blue.
+// No accent borrows the background's hue; a gray source leaves Dark Modern blue.
 function colorsFor(background, accent) {
   const out = {};
   const set = (keys, value) => keys.forEach((k) => { out[k] = value; });
   if (background) {
     const frame = toHsl(background);
     const pane = paneOf(frame);
-    // Dark Modern's pane grey lands on the pane tone; other greys keep their step from it.
+    // Dark Modern's pane gray lands on the pane tone; other grays keep their step from it.
     const shift = pane.l - toHsl("#181818").l;
     Object.keys(BASE).forEach((k) => { out[k] = tint(BASE[k], pane, shift); });
     set(FRAME, background);
