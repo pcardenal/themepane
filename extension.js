@@ -258,8 +258,18 @@ const FIXED = {
   "editor.minimap.renderCharacters": false,
   "scm.diffDecorations": "all",
   "workbench.editor.empty.hint": "hidden",
-  "editor.lineNumbers": "on",
   "editor.bracketPairColorization.enabled": true,
+  "workbench.notifications.showInTitleBar": true,
+  "window.border": "default",
+  "window.menuStyle": "inherit",
+  "window.dialogStyle": "native",
+  "workbench.reduceTransparency": "off",
+  "editor.minimap.showSlider": "mouseover",
+  "editor.minimap.size": "proportional",
+  "editor.inlayHints.enabled": "offUnlessPressed",
+  "explorer.decorations.colors": true,
+  "explorer.decorations.badges": true,
+  "problems.decorations.enabled": true,
 };
 
 // Where the Layout menu starts; every value there is drawn for, so changes aren't flagged.
@@ -301,6 +311,9 @@ const allowed = (key) => [].concat(SETUP[key]);
 const ON_OFF = [true, false];
 const PINNED_ROW = "workbench.editor.pinnedTabsOnSeparateRow";
 const UNPIN = "workbench.editor.tabActionUnpinVisibility";
+const CONTROLS = "window.controlsStyle";
+// VS Code asks for a restart after these change.
+const RESTARTS = ["window.titleBarStyle", CONTROLS];
 // Rows and buttons do nothing while tabs are hidden, so they're only listed while tabs show.
 const tabsShown = () => vscode.workspace.getConfiguration().get(SHOW_TABS) !== "none";
 // An item with `sub` opens its own list.
@@ -345,6 +358,29 @@ const LAYOUT_CHOICES = [
         { value: false, name: "Unpin only", also: { [UNPIN]: true } },
         { value: false, name: "None", also: { [UNPIN]: false } },
       ] },
+      { key: "workbench.editor.showTabIndex", title: "Numbers", when: tabsShown, values: ON_OFF },
+    ] },
+    { title: "Cursor", sub: [
+      { key: "editor.cursorStyle", title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
+      { key: "editor.cursorBlinking", title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
+      { key: "editor.cursorSmoothCaretAnimation", title: "Smooth movement", values: [
+        { value: "off", name: "Off" },
+        { value: "explicit", name: "Only when moved on purpose" },
+        { value: "on", name: "On" },
+      ] },
+    ] },
+    { title: "Gutter", sub: [
+      { key: "editor.lineNumbers", title: "Line numbers", values: ["on", "relative", "interval", "off"] },
+      { key: "editor.showFoldingControls", title: "Folding arrows", values: [
+        { value: "always", name: "Always" },
+        { value: "mouseover", name: "On hover" },
+        { value: "never", name: "Never" },
+      ] },
+      { key: "editor.glyphMargin", title: "Glyph margin", values: ON_OFF },
+      { key: "scm.diffDecorationsGutterVisibility", title: "Git marks", values: [
+        { value: "always", name: "Always" },
+        { value: "hover", name: "On hover" },
+      ] },
     ] },
     { key: "editor.minimap.enabled", title: "Minimap", values: [
       { value: true, name: "On", also: { "editor.minimap.autohide": "none" } },
@@ -360,12 +396,34 @@ const LAYOUT_CHOICES = [
         "editor.guides.bracketPairs": true, "editor.guides.bracketPairsHorizontal": true } },
       { value: false, name: "Off", also: { "editor.guides.highlightActiveIndentation": false, "editor.guides.bracketPairs": false } },
     ] },
+    { key: "editor.scrollbar.vertical", title: "Scrollbars", values: [
+      { value: "auto", name: "Auto", also: { "editor.scrollbar.horizontal": "auto" } },
+      { value: "visible", name: "Always visible", also: { "editor.scrollbar.horizontal": "visible" } },
+      { value: "hidden", name: "Hidden", also: { "editor.scrollbar.horizontal": "hidden" } },
+    ] },
+    { key: "editor.smoothScrolling", title: "Smooth scrolling", values: [
+      { value: true, name: "On", also: { "workbench.list.smoothScrolling": true } },
+      { value: false, name: "Off", also: { "workbench.list.smoothScrolling": false } },
+    ] },
+    { key: "editor.wordWrap", title: "Word wrap", values: [
+      { value: "off", name: "Off" },
+      { value: "on", name: "At the window edge" },
+      { value: "wordWrapColumn", name: "At the wrap column" },
+      { value: "bounded", name: "At the edge or column, whichever is first" },
+    ] },
+    { key: "editor.codeLens", title: "CodeLens", values: ON_OFF },
     { key: "workbench.editor.editorActionsLocation", title: "Toolbar location", values: [
       { value: "default", name: "Next to the tabs" },
       { value: "titleBar", name: "In the title bar" },
       { value: "hidden", name: "Hidden" },
     ] },
-    { key: "breadcrumbs.enabled", title: "Breadcrumbs", values: ON_OFF },
+    { key: "breadcrumbs.enabled", title: "Breadcrumbs", values: [
+      ...[["on", "File and symbols"], ["last", "File and current symbol"], ["off", "File only"]].flatMap(([path, name]) => [
+        { value: true, name, also: { "breadcrumbs.symbolPath": path, "breadcrumbs.icons": true } },
+        { value: true, name: name + " [No icons]", also: { "breadcrumbs.symbolPath": path, "breadcrumbs.icons": false } },
+      ]),
+      { value: false, name: "Off" },
+    ] },
     { key: "editor.stickyScroll.enabled", title: "Sticky scroll", values: [
       { value: true, name: "On", also: { "workbench.tree.enableStickyScroll": true } },
       { value: false, name: "Off", also: { "workbench.tree.enableStickyScroll": false } },
@@ -373,9 +431,11 @@ const LAYOUT_CHOICES = [
   ] },
   { group: "Title bar", items: [
     { key: "window.titleBarStyle", title: "Title bar style", values: [
-      { value: "custom", name: "Custom", also: { "window.customTitleBarVisibility": "auto" } },
-      { value: "custom", name: "Custom, hidden in full screen", also: { "window.customTitleBarVisibility": "windowed" } },
-      { value: "native", name: "Native (not colored, restarts)" },
+      ...[["auto", "Custom"], ["windowed", "Custom, hidden in full screen"]].flatMap(([shown, name]) =>
+        [["native", ""], ["custom", " [VS Code controls]"], ["hidden", " [No controls]"]].map(([controls, tag]) => ({
+          value: "custom", name: name + tag, also: { "window.customTitleBarVisibility": shown, [CONTROLS]: controls },
+        }))),
+      { value: "native", name: "Native, not colored", also: { [CONTROLS]: "native" } },
     ] },
     { key: "window.commandCenter", title: "Command center", values: ON_OFF },
     { key: "workbench.layoutControl.enabled", title: "Layout controls", values: ON_OFF },
@@ -427,8 +487,18 @@ function setupText({ key, got }) {
   if (key === "editor.minimap.renderCharacters") return "the minimap draws characters, not blocks";
   if (key === "scm.diffDecorations") return "git change marks are " + got + ", not all";
   if (key === "workbench.editor.empty.hint") return "new files show the empty editor hint";
-  if (key === "editor.lineNumbers") return "line numbers are " + got + ", not on";
   if (key === "editor.bracketPairColorization.enabled") return "brackets aren't colored by pair";
+  if (key === "workbench.notifications.showInTitleBar") return "the notification bell is hidden";
+  if (key === "window.border") return "the window border is " + got + ", not colored";
+  if (key === "window.menuStyle") return "menus are " + got + ", not inherited from the title bar";
+  if (key === "window.dialogStyle") return "dialogs are " + got + ", not native";
+  if (key === "workbench.reduceTransparency") return "reduced transparency is " + got;
+  if (key === "editor.minimap.showSlider") return "the minimap slider always shows, not on hover";
+  if (key === "editor.minimap.size") return "the minimap is sized to " + got + ", not proportional";
+  if (key === "editor.inlayHints.enabled") return "inlay hints are " + valueName(got).toLowerCase() + ", not shown only while Ctrl+Alt is held";
+  if (key === "explorer.decorations.colors") return "Explorer file names aren't colored by git status";
+  if (key === "explorer.decorations.badges") return "Explorer files have no git status letters";
+  if (key === "problems.decorations.enabled") return "files with problems aren't marked";
   return "the activity bar hides itself";
 }
 
@@ -730,10 +800,18 @@ function valueName(value) {
 
 const optionsOf = (choice) => choice.options || (choice.options = choice.values.map((v) => (typeof v === "object" ? v : { value: v })));
 const optionName = (o) => o.name || valueName(o.value);
+// An option's other keys, leaving out any this VS Code doesn't have (window controls on a Mac).
+const alsoOf = (o) => Object.entries(o.also || {}).filter(([k]) => registered(k));
+// Whether picking the option changes a setting that needs a restart.
+function restarts(choice, o) {
+  const cfg = vscode.workspace.getConfiguration();
+  const sets = ("value" in o ? [[choice.key, o.value]] : []).concat(alsoOf(o));
+  return sets.some(([k, v]) => RESTARTS.includes(k) && cfg.get(k) !== v);
+}
 
 function isCurrent(choice, o) {
   const cfg = vscode.workspace.getConfiguration();
-  return (!("value" in o) || cfg.get(choice.key) === o.value) && Object.entries(o.also || {}).every(([k, v]) => cfg.get(k) === v);
+  return (!("value" in o) || cfg.get(choice.key) === o.value) && alsoOf(o).every(([k, v]) => cfg.get(k) === v);
 }
 
 function currentName(choice) {
@@ -746,13 +824,13 @@ const defaultOf = (key) => (key in LAYOUT ? LAYOUT[key] : vscode.workspace.getCo
 function defaultOption(choice) {
   const value = defaultOf(choice.key);
   const options = optionsOf(choice).filter((o) => o.value === value);
-  return options.find((o) => Object.entries(o.also || {}).every(([k, v]) => defaultOf(k) === v)) || options[0];
+  return options.find((o) => alsoOf(o).every(([k, v]) => defaultOf(k) === v)) || options[0];
 }
 
 
 async function applyOption(choice, o) {
   if ("value" in o) await setLayout(choice.key, o.value);
-  for (const [k, v] of Object.entries(o.also || {})) await setLayout(k, v);
+  for (const [k, v] of alsoOf(o)) await setLayout(k, v);
 }
 
 // Registered settings only; an item with `sub` stays while any of its settings does.
@@ -793,7 +871,7 @@ function layoutView(view) {
       title: c.title,
       placeholder: "Enter picks, Esc goes back",
       items: optionsOf(c).map((o) => ({
-        label: (isCurrent(c, o) ? "$(check)" : "$(blank)") + "  " + optionName(o),
+        label: (isCurrent(c, o) ? "$(check)" : "$(blank)") + "  " + optionName(o) + (restarts(c, o) ? " (Restarts)" : ""),
         description: o === def ? "default" : "",
         option: o,
       })),
