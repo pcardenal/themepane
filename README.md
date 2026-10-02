@@ -44,11 +44,15 @@ pair lives in your user settings; a project's colors live in its `.code-workspac
 - **Workspace only**, at the bottom of the menu, keeps Themepane out of your repos. A
   folder then gets a workspace file in `<parent>/.workspaces/`, outside git, and **Reopen
   in workspace** switches to it (`projectColor.reopenWorkspace` does that automatically).
-- **Layout**: Themepane turns on VS Code's modern layout with pill tabs, and puts your old
-  settings back when you uninstall.
+- **Layout**: Themepane sets up VS Code's modern layout (the panel at the bottom, no shadows,
+  plus a few tab, editor and menu details) and puts your old settings back when you uninstall. Your
+  tab style and activity bar stay as you had them. **Layout** in the menu changes the rest:
+  pill, connected or compact tabs, the activity bar on top, the side, the bottom or out of
+  sight, density and more. Every combination keeps the dark cards.
 - **Conflicts**: if something overrides the colors, or you switch away from Dark 2026 or
-  pill tabs, the status bar reads **Themepane · Warning**, and you can **Restore** or
-  ignore the change. Clashing extensions like Peacock get flagged.
+  change one of the layout settings Themepane keeps fixed, the status bar reads
+  **Themepane · Warning**, and you can **Restore** or ignore the change. Clashing
+  extensions like Peacock get flagged.
 - **Updates**: Themepane checks GitHub daily. A new release turns the status bar item green
   and adds **Update Themepane** to the menu.
 
