@@ -270,6 +270,13 @@ const FIXED = {
   "explorer.decorations.colors": true,
   "explorer.decorations.badges": true,
   "problems.decorations.enabled": true,
+  "debug.enableStatusBarColor": true,
+  "window.autoDetectColorScheme": false,
+  "window.autoDetectHighContrast": true,
+  "window.systemColorTheme": "dark",
+  "multiDiffEditor.experimental.variant": "noCards",
+  "notebook.stickyScroll.mode": "indented",
+  "editor.lightbulb.enabled": "off",
 };
 
 // Where the Layout menu starts; every value there is drawn for, so changes aren't flagged.
@@ -310,6 +317,17 @@ const allowed = (key) => [].concat(SETUP[key]);
 // Two options toggle on Enter; more open a list.
 const ON_OFF = [true, false];
 const PINNED_ROW = "workbench.editor.pinnedTabsOnSeparateRow";
+// Sticky scroll is one toggle for the editor and all of these.
+const STICKY = ["workbench.tree.enableStickyScroll", "terminal.integrated.stickyScroll.enabled", "notebook.stickyScroll.enabled",
+  "chat.stickyScroll.enabled"];
+const EDITOR_CURSOR = "editor.cursorStyle";
+const EDITOR_BLINK = "editor.cursorBlinking";
+// The terminal cursor follows the editor's: the nearest of its three shapes (line-thin → line), blinking unless solid.
+const TERMINAL_CURSOR = {
+  "terminal.integrated.cursorStyle": (cfg) => cfg.get(EDITOR_CURSOR).split("-")[0],
+  "terminal.integrated.cursorBlinking": (cfg) => cfg.get(EDITOR_BLINK) !== "solid",
+};
+const CURSOR_KEYS = [EDITOR_CURSOR, EDITOR_BLINK, ...Object.keys(TERMINAL_CURSOR)];
 const UNPIN = "workbench.editor.tabActionUnpinVisibility";
 const CONTROLS = "window.controlsStyle";
 // VS Code asks for a restart after these change.
@@ -336,6 +354,7 @@ const LAYOUT_CHOICES = [
       { value: false, name: "Icons" },
     ] },
     { key: "workbench.notifications.position", title: "Notifications", values: ["bottom-right", "top-right"] },
+    { key: "chat.disableAIFeatures", title: "Turn off AI", values: ON_OFF },
   ] },
   { group: "Editor", items: [
     { title: "Tabs", sub: [
@@ -361,16 +380,18 @@ const LAYOUT_CHOICES = [
       { key: "workbench.editor.showTabIndex", title: "Numbers", when: tabsShown, values: ON_OFF },
     ] },
     { title: "Cursor", sub: [
-      { key: "editor.cursorStyle", title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
-      { key: "editor.cursorBlinking", title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
+      { key: EDITOR_CURSOR, title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
+      { key: EDITOR_BLINK, title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
       { key: "editor.cursorSmoothCaretAnimation", title: "Smooth movement", values: [
         { value: "off", name: "Off" },
-        { value: "explicit", name: "Only when moved on purpose" },
+        { value: "explicit", name: "On, but not when typing" },
         { value: "on", name: "On" },
       ] },
     ] },
     { title: "Gutter", sub: [
       { key: "editor.lineNumbers", title: "Line numbers", values: ["on", "relative", "interval", "off"] },
+      { key: "editor.renderFinalNewline", title: "Final newline number", values: ["on", "dimmed", "off"] },
+      { key: "editor.folding", title: "Folding", values: ON_OFF },
       { key: "editor.showFoldingControls", title: "Folding arrows", values: [
         { value: "always", name: "Always" },
         { value: "mouseover", name: "On hover" },
@@ -381,6 +402,7 @@ const LAYOUT_CHOICES = [
         { value: "always", name: "Always" },
         { value: "hover", name: "On hover" },
       ] },
+      { key: "testing.gutterEnabled", title: "Test marks", values: ON_OFF },
     ] },
     { key: "editor.minimap.enabled", title: "Minimap", values: [
       { value: true, name: "On", also: { "editor.minimap.autohide": "none" } },
@@ -424,10 +446,9 @@ const LAYOUT_CHOICES = [
       ]),
       { value: false, name: "Off" },
     ] },
-    { key: "editor.stickyScroll.enabled", title: "Sticky scroll", values: [
-      { value: true, name: "On", also: { "workbench.tree.enableStickyScroll": true } },
-      { value: false, name: "Off", also: { "workbench.tree.enableStickyScroll": false } },
-    ] },
+    { key: "editor.stickyScroll.enabled", title: "Sticky scroll", values: [true, false].map((value) => ({
+      value, also: Object.fromEntries(STICKY.map((k) => [k, value])),
+    })) },
   ] },
   { group: "Title bar", items: [
     { key: "window.titleBarStyle", title: "Title bar style", values: [
@@ -439,6 +460,221 @@ const LAYOUT_CHOICES = [
     ] },
     { key: "window.commandCenter", title: "Command center", values: ON_OFF },
     { key: "workbench.layoutControl.enabled", title: "Layout controls", values: ON_OFF },
+    { key: "workbench.browser.showInTitleBar", title: "Browser button", values: [true, false, "whenOpen"] },
+    { key: "chat.agentsControl.enabled", title: "Agent status", values: [{ value: "compact", name: "On" }, { value: "hidden", name: "Off" }] },
+    { key: "chat.titleBar.signIn.enabled", title: "Copilot sign in", values: ON_OFF },
+    { key: "update.titleBar", title: "Update indicator", values: ON_OFF },
+  ] },
+  { group: "add-on-starred", items: [
+    { key: "editor.fontLigatures", title: "Editor: font ligatures", values: ON_OFF },
+    { key: "editor.colorDecorators", title: "Editor: color swatches", values: ON_OFF },
+    { key: "editor.occurrencesHighlight", title: "Editor: highlight occurrences", values: ["off", "singleFile", "multiFile"] },
+    { key: "editor.selectionHighlight", title: "Editor: highlight selection matches", values: ON_OFF },
+    { key: "editor.matchBrackets", title: "Editor: matching brackets", values: ["always", "near", "never"] },
+    { key: "diffEditor.renderSideBySide", title: "Diff: side by side", values: ON_OFF },
+    { key: "diffEditor.hideUnchangedRegions.enabled", title: "Diff: hide unchanged regions", values: ON_OFF },
+    { key: "terminal.integrated.shellIntegration.decorationsEnabled", title: "Terminal: command marks", values: ["both", "gutter", "overviewRuler", "never"] },
+    { key: "terminal.integrated.defaultLocation", title: "Terminal: new terminals open in", values: ["editor", "view"] },
+    { key: "explorer.fileNesting.enabled", title: "Explorer: file nesting", values: ON_OFF },
+    { key: "scm.defaultViewMode", title: "Source control: view mode", values: ["tree", "list"] },
+    { key: "breadcrumbs.filePath", title: "Breadcrumbs: file path", values: ["on", "off", "last"] },
+    { key: "debug.toolBarLocation", title: "Debug: toolbar location", values: ["floating", "docked", "commandCenter", "hidden"] },
+    { key: "git.blame.editorDecoration.enabled", title: "Git: inline blame", values: ON_OFF },
+    { key: "git.blame.statusBarItem.enabled", title: "Git: blame in status bar", values: ON_OFF },
+  ] },
+  { group: "add-on", items: [
+    { key: "workbench.editor.tabActionReserveSpace", title: "Tabs: reserve space for buttons", values: ON_OFF },
+    { key: "workbench.productIconTheme", title: "Product icons", values: ["Default"] },
+    { key: "workbench.reduceMotion", title: "Reduce motion", values: ["on", "off", "auto"] },
+    { key: "workbench.accounts.showAvatar", title: "Account avatar", values: ON_OFF },
+    { key: "workbench.experimental.share.enabled", title: "Title bar: share button", values: ON_OFF },
+    { key: "workbench.panel.opensMaximized", title: "Panel opens maximized", values: ["always", "never", "preserve"] },
+    { key: "workbench.secondarySideBar.forceMaximized", title: "Secondary sidebar starts maximized", values: ON_OFF },
+    { key: "workbench.editor.enablePreview", title: "Tabs: preview (italic) tabs", values: ON_OFF },
+    { key: "workbench.editor.useModal", title: "Editors open in a modal", values: ["off", "some", "all"] },
+    { key: "workbench.editor.alwaysShowEditorActions", title: "Toolbar in inactive groups", values: ON_OFF },
+    { key: "workbench.editor.untitled.labelFormat", title: "Untitled tab label", values: ["content", "name"] },
+    { key: "workbench.editor.customLabels.enabled", title: "Custom tab labels", values: ON_OFF },
+    { key: "workbench.editor.splitInGroupLayout", title: "Split in group", values: ["vertical", "horizontal"] },
+    { key: "workbench.editor.openSideBySideDirection", title: "Open side by side", values: ["right", "down"] },
+    { key: "workbench.editor.openPositioning", title: "New tabs open", values: ["left", "right", "first", "last"] },
+    { key: "workbench.editor.centeredLayoutAutoResize", title: "Centered layout: auto resize", values: ON_OFF },
+    { key: "workbench.editor.centeredLayoutFixedWidth", title: "Centered layout: fixed width", values: ON_OFF },
+    { key: "workbench.startupEditor", title: "Startup editor", values: ["none", "welcomePage", "readme", "newUntitledFile", "welcomePageInEmptyWorkbench", "terminal", "agentSessionsWelcomePage"] },
+    { key: "workbench.tips.enabled", title: "Empty editor tips", values: ON_OFF },
+    { key: "workbench.list.horizontalScrolling", title: "Lists: horizontal scrolling", values: ON_OFF },
+    { key: "workbench.list.defaultFindMode", title: "Lists: find mode", values: ["highlight", "filter"] },
+    { key: "window.newWindowDimensions", title: "New window size", values: ["default", "inherit", "offset", "maximized", "fullscreen"] },
+    { key: "window.restoreFullscreen", title: "Restore full screen", values: ON_OFF },
+    { key: "zenMode.centerLayout", title: "Zen: center layout", values: ON_OFF },
+    { key: "zenMode.fullScreen", title: "Zen: full screen", values: ON_OFF },
+    { key: "zenMode.hideActivityBar", title: "Zen: hide activity bar", values: ON_OFF },
+    { key: "zenMode.hideLineNumbers", title: "Zen: hide line numbers", values: ON_OFF },
+    { key: "zenMode.hideStatusBar", title: "Zen: hide status bar", values: ON_OFF },
+    { key: "zenMode.showTabs", title: "Zen: tabs", values: ["multiple", "single", "none"] },
+    { key: "editor.links", title: "Editor: clickable links", values: ON_OFF },
+    { key: "editor.scrollBeyondLastLine", title: "Editor: scroll past last line", values: ON_OFF },
+    { key: "editor.selectionHighlightMultiline", title: "Editor: multiline selection matches", values: ON_OFF },
+    { key: "editor.guides.highlightActiveBracketPair", title: "Editor: highlight active bracket pair", values: ON_OFF },
+    { key: "editor.bracketPairColorization.independentColorPoolPerBracketType", title: "Editor: bracket colors per type", values: ON_OFF },
+    { key: "editor.renderLineHighlightOnlyWhenFocus", title: "Editor: line highlight only when focused", values: ON_OFF },
+    { key: "editor.roundedSelection", title: "Editor: rounded selection", values: ON_OFF },
+    { key: "editor.foldingHighlight", title: "Editor: highlight folded ranges", values: ON_OFF },
+    { key: "debug.showInlineBreakpointCandidates", title: "Debug: inline breakpoint candidates", values: ON_OFF },
+    { key: "editor.overtypeCursorStyle", title: "Cursor: overtype shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
+    { key: "editor.showUnused", title: "Editor: fade unused code", values: ON_OFF },
+    { key: "editor.showDeprecated", title: "Editor: strike deprecated code", values: ON_OFF },
+    { key: "editor.semanticHighlighting.enabled", title: "Editor: semantic highlighting", values: [true, false, "configuredByTheme"] },
+    { key: "editor.renderControlCharacters", title: "Editor: control characters", values: ON_OFF },
+    { key: "editor.unicodeHighlight.ambiguousCharacters", title: "Editor: highlight ambiguous characters", values: ON_OFF },
+    { key: "editor.unicodeHighlight.invisibleCharacters", title: "Editor: highlight invisible characters", values: ON_OFF },
+    { key: "editor.wrappingIndent", title: "Word wrap: indent", values: ["none", "same", "indent", "deepIndent"] },
+    { key: "editor.wordWrapIndicator", title: "Word wrap: indicator", values: ON_OFF },
+    { key: "editor.minimap.showMarkSectionHeaders", title: "Minimap: MARK headers", values: ON_OFF },
+    { key: "editor.minimap.showRegionSectionHeaders", title: "Minimap: region headers", values: ON_OFF },
+    { key: "testing.coverageMinimapEnabled", title: "Minimap: coverage", values: ON_OFF },
+    { key: "editor.overviewRulerBorder", title: "Overview ruler: border", values: ON_OFF },
+    { key: "editor.hideCursorInOverviewRuler", title: "Overview ruler: hide cursor", values: ON_OFF },
+    { key: "debug.showBreakpointsInOverviewRuler", title: "Overview ruler: breakpoints", values: ON_OFF },
+    { key: "editor.hover.enabled", title: "Hover", values: ["on", "off", "onKeyboardModifier"] },
+    { key: "editor.hover.above", title: "Hover above the line", values: ON_OFF },
+    { key: "editor.parameterHints.enabled", title: "Parameter hints", values: ON_OFF },
+    { key: "editor.inlayHints.padding", title: "Inlay hints: padding", values: ON_OFF },
+    { key: "editor.codeActionWidget.showHeaders", title: "Code action menu headers", values: ON_OFF },
+    { key: "editor.inlineSuggest.showToolbar", title: "Inline suggestion toolbar", values: ["always", "onHover", "never"] },
+    { key: "editor.suggest.showIcons", title: "Suggestions: icons", values: ON_OFF },
+    { key: "editor.suggest.showStatusBar", title: "Suggestions: status bar", values: ON_OFF },
+    { key: "editor.suggest.showInlineDetails", title: "Suggestions: inline details", values: ON_OFF },
+    { key: "editor.suggest.preview", title: "Suggestions: preview", values: ON_OFF },
+    { key: "editor.stickyScroll.scrollWithEditor", title: "Sticky scroll: scroll horizontally", values: ON_OFF },
+    { key: "editor.find.addExtraSpaceOnTop", title: "Find: extra space on top", values: ON_OFF },
+    { key: "editor.experimentalWhitespaceRendering", title: "Whitespace rendering", values: ["svg", "font", "off"] },
+    { key: "editor.experimentalGpuAcceleration", title: "Editor: GPU rendering", values: ["off", "on"] },
+    { key: "diffEditor.useInlineViewWhenSpaceIsLimited", title: "Diff: inline when narrow", values: ON_OFF },
+    { key: "diffEditor.renderIndicators", title: "Diff: +/- indicators", values: ON_OFF },
+    { key: "diffEditor.renderMarginRevertIcon", title: "Diff: revert arrows", values: ON_OFF },
+    { key: "diffEditor.renderGutterMenu", title: "Diff: gutter menu", values: ON_OFF },
+    { key: "diffEditor.codeLens", title: "Diff: CodeLens", values: ON_OFF },
+    { key: "diffEditor.wordWrap", title: "Diff: word wrap", values: ["off", "on", "inherit"] },
+    { key: "diffEditor.experimental.showMoves", title: "Diff: show moved code", values: ON_OFF },
+    { key: "diffEditor.experimental.useTrueInlineView", title: "Diff: true inline view", values: ON_OFF },
+    { key: "diffEditor.experimental.showEmptyDecorations", title: "Diff: empty decorations", values: ON_OFF },
+    { key: "mergeEditor.showDeletionMarkers", title: "Merge: deletion markers", values: ON_OFF },
+    { key: "terminal.integrated.cursorStyleInactive", title: "Terminal: unfocused cursor", values: ["outline", "block", "line", "underline", "none"] },
+    { key: "terminal.integrated.shellIntegration.showCommandGuide", title: "Terminal: command guide", values: ON_OFF },
+    { key: "terminal.integrated.fontLigatures.enabled", title: "Terminal: font ligatures", values: ON_OFF },
+    { key: "terminal.integrated.gpuAcceleration", title: "Terminal: GPU rendering", values: ["auto", "on", "off"] },
+    { key: "terminal.integrated.minimumContrastRatio", title: "Terminal: minimum contrast", values: [1, 4.5, 7, 21] },
+    { key: "terminal.integrated.drawBoldTextInBrightColors", title: "Terminal: bold in bright colors", values: ON_OFF },
+    { key: "terminal.integrated.smoothScrolling", title: "Terminal: smooth scrolling", values: ON_OFF },
+    { key: "terminal.integrated.textBlinking", title: "Terminal: text blinking", values: ON_OFF },
+    { key: "terminal.integrated.customGlyphs", title: "Terminal: custom glyphs", values: ON_OFF },
+    { key: "terminal.integrated.rescaleOverlappingGlyphs", title: "Terminal: rescale overlapping glyphs", values: ON_OFF },
+    { key: "terminal.integrated.enableImages", title: "Terminal: images", values: ON_OFF },
+    { key: "terminal.integrated.tabs.hideCondition", title: "Terminal tabs: hide when", values: ["never", "singleTerminal", "singleGroup"] },
+    { key: "terminal.integrated.tabs.showActions", title: "Terminal tabs: actions", values: ["always", "singleTerminal", "singleTerminalOrNarrow", "never"] },
+    { key: "terminal.integrated.tabs.showActiveTerminal", title: "Terminal tabs: active terminal", values: ["always", "singleTerminal", "singleTerminalOrNarrow", "never"] },
+    { key: "terminal.integrated.tabs.enableAnimation", title: "Terminal tabs: animation", values: ON_OFF },
+    { key: "terminal.integrated.tabs.defaultIcon", title: "Terminal tabs: icon", values: ["terminal", "terminal-bash", "terminal-powershell", "terminal-linux", "console"] },
+    { key: "terminal.integrated.enableVisualBell", title: "Terminal: visual bell", values: ON_OFF },
+    { key: "terminal.integrated.initialHint", title: "Terminal: initial hint", values: ON_OFF },
+    { key: "terminal.integrated.resizeDimensionsOverlay.enabled", title: "Terminal: size overlay", values: ON_OFF },
+    { key: "terminal.integrated.showLinkHover", title: "Terminal: link hovers", values: ON_OFF },
+    { key: "terminal.integrated.suggest.showStatusBar", title: "Terminal: suggestion status bar", values: ON_OFF },
+    { key: "terminal.integrated.hideOnStartup", title: "Terminal: hide on startup", values: ["never", "whenEmpty", "always"] },
+    { key: "explorer.fileNesting.expand", title: "Explorer: expand nests", values: ON_OFF },
+    { key: "explorer.sortOrder", title: "Explorer: sort order", values: ["default", "mixed", "filesFirst", "type", "modified", "foldersNestsFiles"] },
+    { key: "explorer.openEditors.sortOrder", title: "Open editors: sort order", values: ["editorOrder", "alphabetical", "fullPath"] },
+    { key: "explorer.excludeGitIgnore", title: "Explorer: hide gitignored", values: ON_OFF },
+    { key: "scm.alwaysShowActions", title: "Source control: always show actions", values: ON_OFF },
+    { key: "scm.alwaysShowRepositories", title: "Source control: always show repositories", values: ON_OFF },
+    { key: "scm.compactFolders", title: "Source control: compact folders", values: ON_OFF },
+    { key: "scm.countBadge", title: "Source control: count badge", values: ["all", "focused", "off"] },
+    { key: "scm.providerCountBadge", title: "Source control: provider badges", values: ["hidden", "auto", "visible"] },
+    { key: "scm.showActionButton", title: "Source control: action button", values: ON_OFF },
+    { key: "scm.showInputActionButton", title: "Source control: input action button", values: ON_OFF },
+    { key: "scm.graph.badges", title: "Source control graph: badges", values: ["all", "filter"] },
+    { key: "search.defaultViewMode", title: "Search: view mode", values: ["tree", "list"] },
+    { key: "search.showLineNumbers", title: "Search: line numbers", values: ON_OFF },
+    { key: "search.actionsPosition", title: "Search: actions position", values: ["auto", "right"] },
+    { key: "search.collapseResults", title: "Search: collapse results", values: ["auto", "alwaysCollapse", "alwaysExpand"] },
+    { key: "search.decorations.badges", title: "Search: badges", values: ON_OFF },
+    { key: "search.decorations.colors", title: "Search: colors", values: ON_OFF },
+    { key: "search.mode", title: "Search: opens in", values: ["view", "reuseEditor", "newEditor"] },
+    { key: "problems.defaultViewMode", title: "Problems: view mode", values: ["tree", "table"] },
+    { key: "problems.showCurrentInStatus", title: "Problems: current problem in status bar", values: ON_OFF },
+    { key: "problems.visibility", title: "Problems: visible", values: ON_OFF },
+    { key: "outline.icons", title: "Outline: icons", values: ON_OFF },
+    { key: "outline.problems.enabled", title: "Outline: problems", values: ON_OFF },
+    { key: "outline.problems.badges", title: "Outline: problem badges", values: ON_OFF },
+    { key: "outline.problems.colors", title: "Outline: problem colors", values: ON_OFF },
+    { key: "outline.collapseItems", title: "Outline: collapse items", values: ["alwaysCollapse", "alwaysExpand"] },
+    { key: "comments.visible", title: "Comments: visible", values: ON_OFF },
+    { key: "testing.countBadge", title: "Testing: count badge", values: ["failed", "off", "passed", "skipped"] },
+    { key: "testing.coverageToolbarEnabled", title: "Testing: coverage toolbar", values: ON_OFF },
+    { key: "testing.resultsView.layout", title: "Testing: results layout", values: ["treeRight", "treeLeft"] },
+    { key: "testing.showCoverageInExplorer", title: "Testing: coverage in Explorer", values: ON_OFF },
+    { key: "debug.showInStatusBar", title: "Debug: status bar item", values: ["never", "always", "onFirstSessionStart"] },
+    { key: "debug.inlineValues", title: "Debug: inline values", values: ["on", "off", "auto"] },
+    { key: "debug.showVariableTypes", title: "Debug: variable types", values: ON_OFF },
+    { key: "debug.console.wordWrap", title: "Debug console: word wrap", values: ON_OFF },
+    { key: "debug.breakpointsView.presentation", title: "Debug: breakpoints view", values: ["list", "tree"] },
+    { key: "debug.hideLauncherWhileDebugging", title: "Debug: hide launcher while debugging", values: ON_OFF },
+    { key: "debug.showSubSessionsInToolBar", title: "Debug: sub-sessions in toolbar", values: ON_OFF },
+    { key: "chat.unifiedAgentsBar.enabled", title: "Title bar: unified agents bar", values: ON_OFF },
+    { key: "chat.titleBar.openInAgentsWindow.enabled", title: "Title bar: open in Agents window", values: ON_OFF },
+    { key: "workbench.commandPalette.showAskInChat", title: "Command palette: Ask in Chat", values: ON_OFF },
+    { key: "inlineChat.affordance", title: "AI: inline chat on selection", values: ["off", "editor"] },
+    { key: "inlineChat.fixDiagnostics", title: "AI: Fix action on problems", values: ON_OFF },
+    { key: "editor.aiStats.enabled", title: "AI: statistics gauge", values: ON_OFF },
+    { key: "chat.viewSessions.enabled", title: "Chat: sessions list", values: ON_OFF },
+    { key: "chat.viewSessions.orientation", title: "Chat: sessions orientation", values: ["stacked", "sideBySide"] },
+    { key: "chat.agent.thinkingStyle", title: "Chat: thinking style", values: ["collapsed", "collapsedPreview", "fixedScrolling"] },
+    { key: "chat.agent.collapseCompletedResponses", title: "Chat: collapse completed work", values: ON_OFF },
+    { key: "chat.inlineReferences.style", title: "Chat: reference style", values: ["box", "link"] },
+    { key: "chat.progressBorder.enabled", title: "Chat: progress border", values: ON_OFF },
+    { key: "chat.contextUsage.enabled", title: "Chat: context usage", values: ON_OFF },
+    { key: "chat.tips.enabled", title: "Chat: tips", values: ON_OFF },
+    { key: "chat.tools.todos.showWidget", title: "Chat: todo widget", values: ON_OFF },
+    { key: "chat.viewProgressBadge.enabled", title: "Chat: progress badge", values: ON_OFF },
+    { key: "chat.upvoteAnimation", title: "Chat: upvote animation", values: ["off", "confetti", "floatingThumbs", "pulseWave", "radiantLines"] },
+    { key: "sessions.chatTimeline.display", title: "Chat: prompt timeline", values: ["off", "ruler", "gutter"] },
+    { key: "agents.voice.showButton", title: "Chat: voice button", values: ON_OFF },
+    { key: "dictation.showButton", title: "Chat: dictation button", values: ON_OFF },
+    { key: "dictation.showTranscript", title: "Chat: dictation transcript", values: ON_OFF },
+    { key: "accessibility.chat.showCheckmarks", title: "Chat: tool checkmarks", values: ON_OFF },
+    { key: "notebook.compactView", title: "Notebook: compact", values: ON_OFF },
+    { key: "notebook.globalToolbar", title: "Notebook: toolbar", values: ON_OFF },
+    { key: "notebook.globalToolbarShowLabel", title: "Notebook: toolbar labels", values: ["always", "never", "dynamic"] },
+    { key: "notebook.insertToolbarLocation", title: "Notebook: insert actions", values: ["betweenCells", "notebookToolbar", "both", "hidden"] },
+    { key: "notebook.cellToolbarVisibility", title: "Notebook: cell toolbar", values: ["hover", "click"] },
+    { key: "notebook.cellFocusIndicator", title: "Notebook: focus indicator", values: ["border", "gutter"] },
+    { key: "notebook.showCellStatusBar", title: "Notebook: cell status bar", values: ["hidden", "visible", "visibleAfterExecute"] },
+    { key: "notebook.lineNumbers", title: "Notebook: line numbers", values: ["on", "off"] },
+    { key: "notebook.showFoldingControls", title: "Notebook: folding arrows", values: ["always", "never", "mouseover"] },
+    { key: "notebook.consolidatedRunButton", title: "Notebook: run button menu", values: ON_OFF },
+    { key: "notebook.consolidatedOutputButton", title: "Notebook: output button", values: ON_OFF },
+    { key: "notebook.output.wordWrap", title: "Notebook: output word wrap", values: ON_OFF },
+    { key: "notebook.output.scrolling", title: "Notebook: scrolling output", values: ON_OFF },
+    { key: "notebook.output.minimalErrorRendering", title: "Notebook: minimal errors", values: ON_OFF },
+    { key: "notebook.breadcrumbs.showCodeCells", title: "Notebook: code cells in breadcrumbs", values: ON_OFF },
+    { key: "notebook.diff.overviewRuler", title: "Notebook diff: overview ruler", values: ON_OFF },
+    { key: "markdown.preview.frontMatter", title: "Markdown preview: front matter", values: ["hide", "codeBlock", "table"] },
+    { key: "markdown.preview.breaks", title: "Markdown preview: line breaks", values: ON_OFF },
+    { key: "markdown.preview.typographer", title: "Markdown preview: typographer", values: ON_OFF },
+    { key: "markdown.preview.markEditorSelection", title: "Markdown preview: mark selection", values: ON_OFF },
+    { key: "markdown-mermaid.controls.show", title: "Mermaid: controls", values: ["never", "onHoverOrFocus", "always"] },
+    { key: "git.decorations.enabled", title: "Git: decorations", values: ON_OFF },
+    { key: "git.countBadge", title: "Git: count badge", values: ["all", "tracked", "off"] },
+    { key: "git.enableStatusBarSync", title: "Git: sync in status bar", values: ON_OFF },
+    { key: "git.showCommitInput", title: "Git: commit input", values: ON_OFF },
+    { key: "git.showInlineOpenFileAction", title: "Git: open file action", values: ON_OFF },
+    { key: "git.timeline.showAuthor", title: "Git timeline: author", values: ON_OFF },
+    { key: "git.timeline.showUncommitted", title: "Git timeline: uncommitted", values: ON_OFF },
+    { key: "github.showAvatar", title: "GitHub: avatars", values: ON_OFF },
+    { key: "update.showPostInstallInfo", title: "Title bar: post-update tooltip", values: ON_OFF },
+    { key: "merge-conflict.decorators.enabled", title: "Merge conflicts: decorations", values: ON_OFF },
+    { key: "merge-conflict.codeLens.enabled", title: "Merge conflicts: CodeLens", values: ON_OFF },
   ] },
 ];
 
@@ -499,6 +735,13 @@ function setupText({ key, got }) {
   if (key === "explorer.decorations.colors") return "Explorer file names aren't colored by git status";
   if (key === "explorer.decorations.badges") return "Explorer files have no git status letters";
   if (key === "problems.decorations.enabled") return "files with problems aren't marked";
+  if (key === "debug.enableStatusBarColor") return "debugging doesn't turn the status bar orange";
+  if (key === "window.autoDetectColorScheme") return "the theme follows the OS color mode";
+  if (key === "window.autoDetectHighContrast") return "high contrast doesn't follow the OS";
+  if (key === "window.systemColorTheme") return "native menus and dialogs are " + got + ", not dark";
+  if (key === "editor.lightbulb.enabled") return "the code action lightbulb is shown";
+  if (key === "notebook.stickyScroll.mode") return "notebook sticky scroll is flat, not indented";
+  if (key === "multiDiffEditor.experimental.variant") return "multi-file diffs are drawn as cards";
   return "the activity bar hides itself";
 }
 
@@ -519,6 +762,18 @@ async function restoreSetup() {
 async function writeJson(file, value) {
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(file, ".."));
   await vscode.workspace.fs.writeFile(file, Buffer.from(JSON.stringify(value, null, 2) + "\n"));
+}
+
+// TERMINAL_CURSOR applied to the user settings. The user value is compared, so a workspace value that can't be dropped doesn't loop.
+async function syncCursor() {
+  if (leaving) return;
+  for (const [key, from] of Object.entries(TERMINAL_CURSOR)) {
+    if (!registered(key)) continue;
+    const want = from(vscode.workspace.getConfiguration());
+    const info = vscode.workspace.getConfiguration().inspect(key);
+    const workspace = info.workspaceValue !== undefined && info.workspaceValue !== want && writable();
+    if ((info.globalValue ?? info.defaultValue) !== want || workspace) await setLayout(key, want);
+  }
 }
 
 // Global storage on this machine: VS Code hands out file: or, lately, vscode-userdata: URIs.
@@ -1512,6 +1767,7 @@ function activate(context) {
   updateStatus();
   enqueue(applyDefaults);
   enqueue(() => applyLayout().catch((e) => console.error("Themepane: layout not set", e)));
+  enqueue(syncCursor);
   refresh();
   resumePick();
   checkElsewhere(true);
@@ -1537,6 +1793,7 @@ function activate(context) {
       if (e.affectsConfiguration("workbench.colorCustomizations") || e.affectsConfiguration("projectColor") ||
           Object.keys(SETUP).some((k) => e.affectsConfiguration(k))) scheduleCheck();
       // The active tab's color depends on the tab style.
+      if (CURSOR_KEYS.some((k) => e.affectsConfiguration(k))) enqueue(syncCursor);
       if (e.affectsConfiguration(TAB_STYLE) && !leaving) { enqueue(applyDefaults); refresh(); }
     }),
     vscode.extensions.onDidChange(() => { warnCulprits(); scheduleCheck(); }),
