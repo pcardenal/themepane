@@ -48,7 +48,9 @@ pair lives in your user settings; a project's colors live in its `.code-workspac
   plus a few tab, editor and menu details) and puts your old settings back when you uninstall. Your
   tab style and activity bar stay as you had them. **Layout** in the menu changes the rest:
   pill, connected or compact tabs, the activity bar on top, the side, the bottom or out of
-  sight, density and more. Every combination keeps the dark cards.
+  sight, density, the cursor, gutter and text details, the title bar's buttons, plus a few
+  extras for the terminal, diffs and Zen mode, so you rarely need to open Settings. Every
+  combination keeps the dark cards.
 - **Conflicts**: if something overrides the colors, or you switch away from Dark 2026 or
   change one of the layout settings Themepane keeps fixed, the status bar reads
   **Themepane · Warning**, and you can **Restore** or ignore the change. Clashing
