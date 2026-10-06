@@ -12,7 +12,8 @@ readable. The backgrounds are 28 colors from Cameo to Amaranth (a few deeper, li
 and Lapis), 10 muted tints like Slate and Heather, Graphite (the default) and pure-black
 Obsidian. Accents come bold (Cobalt, Jade), dusty (Bronze, Pewter), pastel (Matcha, Peach)
 or pearly (Nacre, Opal), plus Snow. Each background has a matching accent, so one pick is
-enough, and **Custom…** takes any hex and tones it down so nothing glows.
+enough. For anything else, **Custom…** opens a color panel: drag across the shades and the
+window follows, or type a hex. It's toned down so nothing glows.
 
 Click **Themepane** in the status bar (or press `Ctrl+Alt+T`, `Ctrl+Cmd+T` on a Mac), pick
 **Background** or **Accent**, and scroll: the window changes as you go. Enter keeps a color,

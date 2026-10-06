@@ -286,6 +286,12 @@ function fromOklch(L, C, h) {
   return hexOf(rgb.map((v) => gam(Math.min(1, Math.max(0, v))) * 255));
 }
 
+// sRGB channels (0-255) of an OKLCH color, or null outside sRGB: the custom color panel's field.
+function rgbIn(L, C, h) {
+  const rgb = oklchToRgb(L, C, h);
+  return inGamut(rgb) ? rgb.map((v) => gam(Math.min(1, Math.max(0, v))) * 255) : null;
+}
+
 // Solid fills that carry text: the accent's own lightness and chroma, capped so
 // nothing glows. Light fills get dark text; hover is one step toward the middle.
 const FILLS = [
@@ -516,4 +522,4 @@ function colorsFor(background, accent, { connected = false } = {}) {
   return out;
 }
 
-module.exports = { KEYS, normalizeHex, colorsFor, toOklch, fromOklch };
+module.exports = { KEYS, normalizeHex, colorsFor, toOklch, fromOklch, rgbIn };

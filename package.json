@@ -27,6 +27,8 @@
     "extension.js",
     "tint.js",
     "revert.js",
+    "panel.html",
+    "panel.js",
     "node_modules/jsonc-parser/package.json",
     "node_modules/jsonc-parser/lib/umd/**",
     "images/icon.png",

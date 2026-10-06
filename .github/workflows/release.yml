@@ -35,7 +35,7 @@ jobs:
         run: |
           files="$(npx -y @vscode/vsce@3 ls)"
           echo "$files"
-          for f in extension.js tint.js revert.js node_modules/jsonc-parser/lib/umd/main.js; do
+          for f in extension.js tint.js revert.js panel.html panel.js node_modules/jsonc-parser/lib/umd/main.js; do
             grep -qx "$f" <<<"$files" || { echo "Missing from the VSIX: $f"; exit 1; }
           done
       - name: Publish the release

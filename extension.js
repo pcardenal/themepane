@@ -889,6 +889,7 @@ function presetItem(p, hex, description) {
 // Presets for one knob: arrow keys preview live, Enter keeps, Esc reverts.
 // A window that can't be written to reopens in a workspace first.
 function pickKnob(knob) {
+  if (colorPanel) return colorPanel.reveal();
   if (!writable()) {
     if (vscode.workspace.workspaceFolders) reopenInWorkspace(knob);
     else vscode.window.showInformationMessage("Open a folder first.");
@@ -936,20 +937,9 @@ function pickKnob(knob) {
     if (!item) return;
     accepted = true;
     qp.hide();
-    if (!item.custom) {
-      showTip(0);
-      return applyToWorkspace(item.reset ? DEFAULT : withKnob(before, knob, item.hex)).finally(done);
-    }
-    const input = await vscode.window.showInputBox({
-      title: "Themepane: " + spec.title,
-      prompt: knob === "background"
-        ? "Hex color for the frame, e.g. #1f4a33. The panes get a deep shade of it. Keep it dark enough for light text."
-        : "Hex color, e.g. #d9bb66. Light colors get dark button text; colorfulness is capped so nothing glows.",
-      value: before[knob] || "",
-      validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex color like #1c2a1f"),
-    });
-    showTip(input ? 0 : TIP_DELAY);
-    await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before).finally(done);
+    if (item.custom) return pickCustom(knob, before, done);
+    showTip(0);
+    return applyToWorkspace(item.reset ? DEFAULT : withKnob(before, knob, item.hex)).finally(done);
   });
   qp.onDidHide(() => {
     if (!accepted) {
@@ -959,6 +949,50 @@ function pickKnob(knob) {
     qp.dispose();
   });
   qp.show();
+}
+
+// Custom…: a color field in an editor tab (panel.html, panel.js). Every change previews on the
+// window; Apply or Enter keeps it, Cancel, Esc or closing the tab goes back to `before`.
+let colorPanel = null;
+async function pickCustom(knob, before, done) {
+  const e = effective(before);
+  const start = e[knob] || tint.colorsFor(e.background, null)["button.background"] || "#0078d4";
+  // Picking Graphite clears the workspace value, as it does in the menu.
+  const stateOf = (hex) => withKnob(before, knob, knob === "background" && hex === DEFAULT_BACKGROUND ? null : hex);
+  preview(before);
+  const root = ctx.extensionUri;
+  const title = "Custom " + KNOBS[knob].title.toLowerCase();
+  const panel = vscode.window.createWebviewPanel("themepane.color", title,
+    vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [root] });
+  colorPanel = panel;
+  panel.iconPath = vscode.Uri.joinPath(root, "images", "icon.png");
+  let kept = false;
+  panel.webview.onDidReceiveMessage((m) => {
+    const hex = tint.normalizeHex(m.hex || "");
+    if (m.type === "ready") {
+      const presets = KNOBS[knob].presets.map(({ name, hex }) => ({ name, hex }));
+      panel.webview.postMessage({ type: "init", knob, title, hex: start, presets });
+    }
+    if (m.type === "preview" && hex) preview(stateOf(hex));
+    if (m.type === "apply" && hex) {
+      kept = true;
+      showTip(0);
+      applyToWorkspace(stateOf(hex)).finally(done);
+      panel.dispose();
+    }
+    if (m.type === "cancel") panel.dispose();
+  });
+  panel.onDidDispose(() => {
+    colorPanel = null;
+    if (kept) return;
+    showTip(TIP_DELAY);
+    applyToWorkspace(before).finally(done);
+  });
+  const nonce = require("crypto").randomBytes(16).toString("base64");
+  const src = (file) => panel.webview.asWebviewUri(vscode.Uri.joinPath(root, file)).toString();
+  const html = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, "panel.html"))).toString("utf8");
+  const fill = { csp: panel.webview.cspSource, nonce, tint: src("tint.js"), script: src("panel.js") };
+  panel.webview.html = html.replace(/\{\{(\w+)\}\}/g, (_, k) => fill[k]);
 }
 
 // Set in the user settings, dropping a workspace value that would hide it. VS Code's own default
@@ -1133,6 +1167,7 @@ function showLayoutView(view, focus) {
 
 // The main menu: conflict actions, the two knobs, then where colors are kept.
 async function pick() {
+  if (colorPanel) return colorPanel.reveal();
   if (!vscode.workspace.workspaceFolders) {
     vscode.window.showInformationMessage("Open a folder first.");
     return;
