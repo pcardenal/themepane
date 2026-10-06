@@ -12,7 +12,8 @@ readable. The backgrounds are 28 colors from Cameo to Amaranth (a few deeper, li
 and Lapis), 10 muted tints like Slate and Heather, Graphite (the default) and pure-black
 Obsidian. Accents come bold (Cobalt, Jade), dusty (Bronze, Pewter), pastel (Matcha, Peach)
 or pearly (Nacre, Opal), plus Snow. Each background has a matching accent, so one pick is
-enough, and **Custom…** takes any hex and tones it down so nothing glows.
+enough. For anything else, **Custom…** opens a color panel: drag across the shades and the
+window follows, or type a hex. It's toned down so nothing glows.
 
 Click **Themepane** in the status bar (or press `Ctrl+Alt+T`, `Ctrl+Cmd+T` on a Mac), pick
 **Background** or **Accent**, and scroll: the window changes as you go. Enter keeps a color,
@@ -44,11 +45,17 @@ pair lives in your user settings; a project's colors live in its `.code-workspac
 - **Workspace only**, at the bottom of the menu, keeps Themepane out of your repos. A
   folder then gets a workspace file in `<parent>/.workspaces/`, outside git, and **Reopen
   in workspace** switches to it (`projectColor.reopenWorkspace` does that automatically).
-- **Layout**: Themepane turns on VS Code's modern layout with pill tabs, and puts your old
-  settings back when you uninstall.
+- **Layout**: Themepane sets up VS Code's modern layout (the panel at the bottom, no shadows,
+  plus a few tab, editor and menu details) and puts your old settings back when you uninstall. Your
+  tab style and activity bar stay as you had them. **Layout** in the menu changes the rest:
+  pill, connected or compact tabs, the activity bar on top, the side, the bottom or out of
+  sight, density, the cursor, gutter and text details, the title bar's buttons, plus a few
+  extras for the terminal, diffs and Zen mode, so you rarely need to open Settings. Every
+  combination keeps the dark cards.
 - **Conflicts**: if something overrides the colors, or you switch away from Dark 2026 or
-  pill tabs, the status bar reads **Themepane · Warning**, and you can **Restore** or
-  ignore the change. Clashing extensions like Peacock get flagged.
+  change one of the layout settings Themepane keeps fixed, the status bar reads
+  **Themepane · Warning**, and you can **Restore** or ignore the change. Clashing
+  extensions like Peacock get flagged.
 - **Updates**: Themepane checks GitHub daily. A new release turns the status bar item green
   and adds **Update Themepane** to the menu.
 

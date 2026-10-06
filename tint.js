@@ -286,6 +286,12 @@ function fromOklch(L, C, h) {
   return hexOf(rgb.map((v) => gam(Math.min(1, Math.max(0, v))) * 255));
 }
 
+// sRGB channels (0-255) of an OKLCH color, or null outside sRGB: the custom color panel's field.
+function rgbIn(L, C, h) {
+  const rgb = oklchToRgb(L, C, h);
+  return inGamut(rgb) ? rgb.map((v) => gam(Math.min(1, Math.max(0, v))) * 255) : null;
+}
+
 // Solid fills that carry text: the accent's own lightness and chroma, capped so
 // nothing glows. Light fills get dark text; hover is one step toward the middle.
 const FILLS = [
@@ -380,7 +386,8 @@ const FRAME = [
   "titleBar.activeBackground",
   "titleBar.inactiveBackground",
   "titleBar.border",
-  "activityBar.background",
+  "window.activeBorder",
+  "window.inactiveBorder",
   "activityBar.border",
   "modernActivityBar.border",
   "statusBar.background",
@@ -388,6 +395,7 @@ const FRAME = [
   "statusBar.noFolderBackground",
   "statusBar.border",
   "editorGroupHeader.tabsBackground",
+  "editorGroupHeader.connectedTabsBackground",
   "editorGroupHeader.tabsBorder",
   "tab.inactiveBackground",
   "tab.unfocusedInactiveBackground",
@@ -469,9 +477,11 @@ function paneOf(frame) {
   return { h: frame.h, s: frame.s * 0.6, l: Math.max(0.05, Math.min(0.09, frame.l * 0.5)) };
 }
 
-// Every key Themepane owns for a background and an accent (either may be null).
+// Every key Themepane owns for a background and an accent (either may be null). Connected tabs
+// share `modernEditorTab.activeBackground` with pills, so it's left out for them and their active
+// tab falls back to `tab.activeBackground`, the editor's own color.
 // No accent borrows the background's hue; a gray source leaves Dark Modern blue.
-function colorsFor(background, accent) {
+function colorsFor(background, accent, { connected = false } = {}) {
   const out = {};
   const set = (keys, value) => keys.forEach((k) => { out[k] = value; });
   if (background) {
@@ -483,7 +493,7 @@ function colorsFor(background, accent) {
     set(FRAME, background);
     Object.assign(out, FRAME_TEXT);
     Object.assign(out, READABLE);
-    set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
+    if (!connected) set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
     set(PILL_HOVER, toHex(frame.h, frame.s, Math.min(1, frame.l + 0.04)));
     set(PILL_CLEAR, "#00000000");
   }
@@ -512,4 +522,4 @@ function colorsFor(background, accent) {
   return out;
 }
 
-module.exports = { KEYS, normalizeHex, colorsFor, toOklch, fromOklch };
+module.exports = { KEYS, normalizeHex, colorsFor, toOklch, fromOklch, rgbIn };

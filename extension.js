@@ -196,6 +196,9 @@ function differs(a, b) {
   return Object.keys(a).concat(Object.keys(b)).some((k) => a[k] !== b[k]);
 }
 
+const TAB_STYLE = "workbench.experimental.modernUIEditorTabStyle";
+const palette = (e) => tint.colorsFor(e.background, e.accent, { connected: config().get(TAB_STYLE) === "connected" });
+
 // `existing` color customizations with Themepane's keys redrawn for `state`;
 // a state with nothing set carries no colors and inherits the user default.
 function merged(existing, state) {
@@ -203,7 +206,7 @@ function merged(existing, state) {
   tint.KEYS.forEach((k) => delete colors[k]);
   if (isCustom(state)) {
     const e = effective(state);
-    Object.assign(colors, tint.colorsFor(e.background, e.accent));
+    Object.assign(colors, palette(e));
   }
   return Object.keys(colors).length ? colors : undefined;
 }
@@ -216,16 +219,385 @@ async function applyDefaults() {
   if (differs(next, existing)) await wb.update("colorCustomizations", next, vscode.ConfigurationTarget.Global);
 }
 
-// The layout Themepane is drawn for: floating cards and pill tabs. Set once per profile;
-// the values they replace are noted, and revert.js puts them back on uninstall.
-const LAYOUT = {
+const SHOW_TABS = "workbench.editor.showTabs";
+const TAB_HEIGHT = "window.density.editorTabHeight";
+const PANEL = "workbench.panel.defaultLocation";
+
+// Settings Themepane keeps fixed: changing one is flagged like a color conflict.
+const FIXED = {
   "workbench.experimental.modernUI": true,
-  "workbench.experimental.modernUIEditorTabStyle": "pill",
+  "workbench.activityBar.autoHide": false,
+  [PANEL]: "bottom",
+  "workbench.experimental.modernUIUppercaseViewHeaders": false,
+  "workbench.editor.titleScrollbarSizing": "default",
+  "workbench.editor.titleScrollbarVisibility": "auto",
+  "workbench.layoutControl.type": "toggles",
+  "workbench.shadows": false,
+  "window.menuBarVisibility": "classic",
+  "editor.minimap.side": "right",
+  "workbench.editor.pinnedTabSizing": "normal",
+  "workbench.editor.showIcons": true,
+  "workbench.editor.labelFormat": "default",
+  "workbench.editor.tabSizing": "fit",
+  "workbench.editor.decorations.badges": true,
+  "workbench.editor.decorations.colors": true,
+  "workbench.editor.highlightModifiedTabs": false,
+  "workbench.statusBar.visible": true,
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "workbench.sideBar.location": "left",
+  "workbench.editor.tabActionLocation": "right",
+  "workbench.secondarySideBar.showLabels": false,
+  "workbench.iconTheme": "vs-seti",
+  "workbench.navigationControl.enabled": true,
+  "workbench.view.alwaysShowHeaderActions": false,
+  "workbench.tree.renderIndentGuides": "onHover",
+  "terminal.integrated.tabs.enabled": true,
+  "terminal.integrated.tabs.location": "right",
+  "editor.renderLineHighlight": "all",
+  "editor.renderWhitespace": "selection",
+  "editor.minimap.renderCharacters": false,
+  "scm.diffDecorations": "all",
+  "workbench.editor.empty.hint": "hidden",
+  "editor.bracketPairColorization.enabled": true,
+  "workbench.notifications.showInTitleBar": true,
+  "window.border": "default",
+  "window.menuStyle": "inherit",
+  "window.dialogStyle": "native",
+  "workbench.reduceTransparency": "off",
+  "editor.minimap.showSlider": "mouseover",
+  "editor.minimap.size": "proportional",
+  "editor.inlayHints.enabled": "offUnlessPressed",
+  "explorer.decorations.colors": true,
+  "explorer.decorations.badges": true,
+  "problems.decorations.enabled": true,
+  "debug.enableStatusBarColor": true,
+  "window.autoDetectColorScheme": false,
+  "window.autoDetectHighContrast": true,
+  "window.systemColorTheme": "dark",
+  "multiDiffEditor.experimental.variant": "noCards",
+  "notebook.stickyScroll.mode": "indented",
+  "editor.lightbulb.enabled": "off",
+  "git.decorations.enabled": true,
+  "problems.visibility": true,
+  "workbench.tips.enabled": false,
+  "terminal.integrated.initialHint": false,
 };
 
-// The theme and layout the palette is drawn for; anything else is flagged like a color conflict.
+// Where the Layout menu starts; every value there is drawn for, so changes aren't flagged.
+// Tab style and activity bar position are left to the user.
+const MENU_DEFAULTS = {
+  [SHOW_TABS]: "multiple",
+  "workbench.editor.wrapTabs": false,
+  "workbench.editor.pinnedTabsOnSeparateRow": true,
+  "workbench.editor.tabActionCloseVisibility": true,
+  "window.density.layout": "default",
+  "window.commandCenter": true,
+  "workbench.layoutControl.enabled": true,
+  "workbench.notifications.position": "bottom-right",
+  "workbench.panel.showLabels": false,
+  "window.titleBarStyle": "custom",
+  "window.customTitleBarVisibility": "auto",
+  "editor.minimap.enabled": true,
+  "breadcrumbs.enabled": true,
+  "workbench.editor.editorActionsLocation": "default",
+};
+
+// Both are set once per profile; the values they replace are noted, and revert.js puts them back
+// on uninstall.
+const LAYOUT = { ...FIXED, ...MENU_DEFAULTS };
+
 const THEME = "Dark 2026";
-const SETUP = { "workbench.colorTheme": THEME, ...LAYOUT };
+// What the palette is drawn for. A list allows any of its values; Restore writes the first.
+const SETUP = {
+  "workbench.colorTheme": THEME,
+  ...FIXED,
+  "workbench.notifications.position": ["bottom-right", "top-right"],
+  [SHOW_TABS]: ["multiple", "none"],
+};
+const allowed = (key) => [].concat(SETUP[key]);
+
+// The Layout menu, in groups. Values are listed by hand: the API doesn't expose a setting's enum.
+// An option can also set other keys (`also`); one without a `value` leaves the setting itself alone.
+// Two options toggle on Enter; more open a list.
+const ON_OFF = [true, false];
+const PINNED_ROW = "workbench.editor.pinnedTabsOnSeparateRow";
+// Sticky scroll is one toggle for the editor and all of these.
+const STICKY = ["workbench.tree.enableStickyScroll", "terminal.integrated.stickyScroll.enabled", "notebook.stickyScroll.enabled",
+  "chat.stickyScroll.enabled"];
+const EDITOR_CURSOR = "editor.cursorStyle";
+const EDITOR_BLINK = "editor.cursorBlinking";
+// The terminal cursor follows the editor's: the nearest of its three shapes (line-thin → line), blinking unless solid.
+const TERMINAL_CURSOR = {
+  "terminal.integrated.cursorStyle": (cfg) => cfg.get(EDITOR_CURSOR).split("-")[0],
+  "terminal.integrated.cursorBlinking": (cfg) => cfg.get(EDITOR_BLINK) !== "solid",
+};
+const CURSOR_KEYS = [EDITOR_CURSOR, EDITOR_BLINK, ...Object.keys(TERMINAL_CURSOR)];
+const UNPIN = "workbench.editor.tabActionUnpinVisibility";
+const CONTROLS = "window.controlsStyle";
+// VS Code asks for a restart after these change.
+const RESTARTS = ["window.titleBarStyle", CONTROLS];
+const setting = (key) => vscode.workspace.getConfiguration().get(key);
+// Rows and buttons do nothing while tabs are hidden, so they're only listed while tabs show.
+const tabsShown = () => setting(SHOW_TABS) !== "none";
+const aiOn = () => setting("chat.disableAIFeatures") !== true;
+const breadcrumbsShown = () => setting("breadcrumbs.enabled") !== false;
+// The same value for a setting and its counterparts elsewhere.
+const together = (keys) => [true, false].map((value) => ({ value, also: Object.fromEntries(keys.map((k) => [k, value])) }));
+// An item with `sub` opens its own list.
+const LAYOUT_CHOICES = [
+  { group: "Window", items: [
+    { key: "workbench.activityBar.location", title: "Activity bar", values: [
+      "top",
+      { value: "default", name: "Side", also: { "workbench.activityBar.compact": false } },
+      { value: "default", name: "Side [Compact]", also: { "workbench.activityBar.compact": true } },
+      "bottom",
+      "hidden",
+    ] },
+    { key: "window.density.layout", title: "Panel spacing", values: [
+      { value: "default", name: "Floating" },
+      { value: "compact", name: "Edge to edge" },
+    ] },
+    { key: "explorer.compactFolders", title: "Compact folders", values: together(["scm.compactFolders"]) },
+    { key: "explorer.fileNesting.enabled", title: "File nesting", values: [
+      { value: false, name: "Off" },
+      { value: true, name: "On, collapsed", also: { "explorer.fileNesting.expand": false } },
+      { value: true, name: "On", also: { "explorer.fileNesting.expand": true } },
+    ] },
+    { key: "workbench.panel.showLabels", title: "Bottom panel tabs", values: [
+      { value: true, name: "Names" },
+      { value: false, name: "Icons" },
+    ] },
+    { key: "workbench.notifications.position", title: "Notifications", values: ["bottom-right", "top-right"] },
+    { key: "chat.disableAIFeatures", title: "Turn off AI", values: ON_OFF },
+  ] },
+  { group: "Editor", items: [
+    { title: "Tabs", sub: [
+      { key: "workbench.experimental.modernUIEditorTabStyle", title: "Style", values: [
+        { value: "pill", name: "Pill", also: { [SHOW_TABS]: "multiple", [TAB_HEIGHT]: "default" } },
+        { value: "pill", name: "Pill [Compact]", also: { [SHOW_TABS]: "multiple", [TAB_HEIGHT]: "compact" } },
+        { value: "connected", name: "Connected", also: { [SHOW_TABS]: "multiple", [TAB_HEIGHT]: "default" } },
+        { value: "connected", name: "Connected [Compact]", also: { [SHOW_TABS]: "multiple", [TAB_HEIGHT]: "compact" } },
+        { name: "Hidden", also: { [SHOW_TABS]: "none" } },
+      ] },
+      { key: "workbench.editor.wrapTabs", title: "Rows", when: tabsShown, values: [
+        { value: false, name: "One row", also: { [PINNED_ROW]: false } },
+        { value: false, name: "One row [Pinned on top]", also: { [PINNED_ROW]: true } },
+        { value: true, name: "Wrap", also: { [PINNED_ROW]: false } },
+        { value: true, name: "Wrap [Pinned on top]", also: { [PINNED_ROW]: true } },
+      ] },
+      { key: "workbench.editor.tabActionCloseVisibility", title: "Buttons", when: tabsShown, values: [
+        { value: true, name: "Close and unpin", also: { [UNPIN]: true } },
+        { value: true, name: "Close only", also: { [UNPIN]: false } },
+        { value: false, name: "Unpin only", also: { [UNPIN]: true } },
+        { value: false, name: "None", also: { [UNPIN]: false } },
+      ] },
+      // Connected tabs always keep the room, and tabs without a close button never need it.
+      { key: "workbench.editor.tabActionReserveSpace", title: "Close button space",
+        when: () => tabsShown() && setting(TAB_STYLE) === "pill" && setting("workbench.editor.tabActionCloseVisibility"), values: [
+          { value: true, name: "On every tab" },
+          { value: false, name: "Only on hover" },
+        ] },
+      { key: "workbench.editor.showTabIndex", title: "Numbers", when: tabsShown, values: ON_OFF },
+      { key: "workbench.editor.enablePreview", title: "Preview", values: ON_OFF },
+    ] },
+    { title: "Cursor", sub: [
+      { key: EDITOR_CURSOR, title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
+      { key: EDITOR_BLINK, title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
+      { key: "editor.cursorSmoothCaretAnimation", title: "Smooth movement", values: [
+        { value: "off", name: "Off" },
+        { value: "explicit", name: "On, but not when typing" },
+        { value: "on", name: "On" },
+      ] },
+    ] },
+    { title: "Gutter", sub: [
+      { key: "editor.lineNumbers", title: "Line numbers", values: ["on", "relative", "interval", "off"] },
+      { key: "editor.renderFinalNewline", title: "Final newline number", values: [
+        { value: "off", name: "Off" },
+        { value: "dimmed", name: "On, dimmed" },
+        { value: "on", name: "On" },
+      ] },
+      { key: "editor.folding", title: "Folding", values: ON_OFF },
+      { key: "editor.showFoldingControls", title: "Folding arrows", values: [
+        ["never", "Off"], ["mouseover", "On, when hovered"], ["always", "On"],
+      ].map(([value, name]) => ({ value, name, also: { "notebook.showFoldingControls": value } })) },
+      { key: "editor.glyphMargin", title: "Glyph margin", values: ON_OFF },
+      { key: "scm.diffDecorationsGutterVisibility", title: "Git marks", values: [
+        { value: "always", name: "Always" },
+        { value: "hover", name: "On hover" },
+      ] },
+      { key: "testing.gutterEnabled", title: "Test marks", values: ON_OFF },
+    ] },
+    { title: "Text", sub: [
+      { key: "editor.fontLigatures", title: "Font ligatures", values: together(["terminal.integrated.fontLigatures.enabled"]) },
+      { key: "editor.occurrencesHighlight", title: "Matches", values: [
+        { value: "singleFile", name: "Word and selection", also: { "editor.selectionHighlight": true } },
+        { value: "singleFile", name: "Word only", also: { "editor.selectionHighlight": false } },
+        { value: "off", name: "Selection only", also: { "editor.selectionHighlight": true } },
+        { value: "off", name: "Off", also: { "editor.selectionHighlight": false } },
+      ] },
+      { key: "editor.matchBrackets", title: "Matching brackets", values: [
+        { value: "never", name: "Off" },
+        { value: "near", name: "On, next to a bracket" },
+        { value: "always", name: "On" },
+      ] },
+      { key: "editor.foldingHighlight", title: "Folded lines", values: [
+        { value: true, name: "Highlighted" },
+        { value: false, name: "Plain" },
+      ] },
+      { key: "editor.codeLens", title: "CodeLens", values: ON_OFF },
+      { key: "editor.colorDecorators", title: "Color swatches", values: ON_OFF },
+      { key: "editor.showUnused", title: "Unused and deprecated", values: [
+        { value: true, name: "Faded, struck through", also: { "editor.showDeprecated": true } },
+        { value: false, name: "Plain", also: { "editor.showDeprecated": false } },
+      ] },
+      { key: "git.blame.editorDecoration.enabled", title: "Git blame", values: [
+        { value: false, name: "Off", also: { "git.blame.statusBarItem.enabled": false } },
+        { value: false, name: "In the status bar", also: { "git.blame.statusBarItem.enabled": true } },
+        { value: true, name: "At the end of the line", also: { "git.blame.statusBarItem.enabled": false } },
+        { value: true, name: "Both", also: { "git.blame.statusBarItem.enabled": true } },
+      ] },
+    ] },
+    { key: "editor.minimap.enabled", title: "Minimap", values: [
+      { value: false, name: "Off" },
+      { value: true, name: "On, autohide", also: { "editor.minimap.autohide": "mouseover" } },
+      { value: true, name: "On", also: { "editor.minimap.autohide": "none" } },
+    ] },
+    { key: "editor.guides.indentation", title: "Guides", values: [
+      { value: true, name: "Indentation",
+        also: { "editor.guides.highlightActiveIndentation": true, "editor.guides.bracketPairs": false } },
+      { value: true, name: "Indentation and current brackets", also: { "editor.guides.highlightActiveIndentation": true,
+        "editor.guides.bracketPairs": "active", "editor.guides.bracketPairsHorizontal": "active" } },
+      { value: true, name: "Indentation and all brackets", also: { "editor.guides.highlightActiveIndentation": true,
+        "editor.guides.bracketPairs": true, "editor.guides.bracketPairsHorizontal": true } },
+      { value: false, name: "Off", also: { "editor.guides.highlightActiveIndentation": false, "editor.guides.bracketPairs": false } },
+    ] },
+    { key: "editor.scrollbar.vertical", title: "Scrollbars", values: [
+      { value: "hidden", name: "Off", also: { "editor.scrollbar.horizontal": "hidden" } },
+      { value: "auto", name: "On, when needed", also: { "editor.scrollbar.horizontal": "auto" } },
+      { value: "visible", name: "On", also: { "editor.scrollbar.horizontal": "visible" } },
+    ] },
+    { key: "editor.smoothScrolling", title: "Smooth scrolling",
+      values: together(["workbench.list.smoothScrolling", "terminal.integrated.smoothScrolling"]) },
+    { key: "editor.wordWrap", title: "Word wrap", values: [
+      ["off", "Off"],
+      ["on", "At the window edge"],
+      ["wordWrapColumn", "At the wrap column"],
+      ["bounded", "At the edge or column, whichever is first"],
+    ].map(([value, name]) => ({ value, name, also: { "notebook.output.wordWrap": value !== "off" } })) },
+    { key: "workbench.editor.editorActionsLocation", title: "Toolbar location", values: [
+      { value: "default", name: "Next to the tabs", also: { "workbench.editor.alwaysShowEditorActions": false } },
+      { value: "default", name: "Next to the tabs [All groups]", also: { "workbench.editor.alwaysShowEditorActions": true } },
+      { value: "titleBar", name: "In the title bar" },
+      { value: "hidden", name: "Hidden" },
+    ] },
+    { title: "Breadcrumbs", sub: [
+      { key: "breadcrumbs.enabled", title: "Show", values: ON_OFF },
+      { key: "breadcrumbs.symbolPath", title: "Symbols", when: breadcrumbsShown, values: [
+        ["off", "Off"], ["last", "On, current only"], ["on", "On"],
+      ].map(([value, name]) => ({ value, name, also: { "notebook.breadcrumbs.showCodeCells": value !== "off" } })) },
+      { key: "breadcrumbs.filePath", title: "File path", when: breadcrumbsShown, values: [
+        { value: "off", name: "Off" },
+        { value: "last", name: "On, file only" },
+        { value: "on", name: "On" },
+      ] },
+      { key: "breadcrumbs.icons", title: "Icons", when: breadcrumbsShown, values: ON_OFF },
+    ] },
+    { key: "editor.stickyScroll.enabled", title: "Sticky scroll", values: together(STICKY) },
+  ] },
+  { group: "Title bar", items: [
+    { key: "window.titleBarStyle", title: "Title bar style", values: [
+      ...[["auto", "Custom"], ["windowed", "Custom, hidden in full screen"]].flatMap(([shown, name]) =>
+        [["native", ""], ["custom", " [VS Code controls]"], ["hidden", " [No controls]"]].map(([controls, tag]) => ({
+          value: "custom", name: name + tag, also: { "window.customTitleBarVisibility": shown, [CONTROLS]: controls },
+        }))),
+      { value: "native", name: "Native, not colored", also: { [CONTROLS]: "native" } },
+    ] },
+    { key: "window.commandCenter", title: "Command center", values: ON_OFF },
+    { key: "workbench.layoutControl.enabled", title: "Layout controls", values: ON_OFF },
+    { key: "workbench.browser.showInTitleBar", title: "Browser button", values: [
+      { value: false, name: "Off" },
+      { value: "whenOpen", name: "On, when a browser is open" },
+      { value: true, name: "On" },
+    ] },
+    // VS Code hides these while AI is off, and agent status lives in the command center.
+    { key: "chat.agentsControl.enabled", title: "Agent status", when: () => aiOn() && setting("window.commandCenter"),
+      values: [{ value: "hidden", name: "Off" }, { value: "compact", name: "On, compact" }, { value: "badge", name: "On" }] },
+    { key: "chat.titleBar.openInAgentsWindow.enabled", title: "Agents window button", when: aiOn, values: ON_OFF },
+    { key: "chat.titleBar.signIn.enabled", title: "Copilot sign in", when: aiOn, values: [
+      { value: true, name: "In the title bar" },
+      { value: false, name: "In the status bar" },
+    ] },
+    { key: "update.titleBar", title: "Update indicator", values: ON_OFF },
+  ] },
+  { group: "Extra VS Code options", items: [
+    { title: "Terminal", sub: [
+      { key: "terminal.integrated.defaultLocation", title: "New terminals open in", values: [
+        { value: "view", name: "The panel" },
+        { value: "editor", name: "The editor area" },
+      ] },
+      { key: "terminal.integrated.tabs.hideCondition", title: "Tab list", values: [
+        { value: "singleTerminal", name: "With two or more terminals" },
+        { value: "never", name: "Always" },
+      ] },
+      { key: "terminal.integrated.shellIntegration.decorationsEnabled", title: "Command marks", values: [
+        { value: "both", name: "On", also: { "terminal.integrated.shellIntegration.showCommandGuide": true } },
+        { value: "never", name: "Off", also: { "terminal.integrated.shellIntegration.showCommandGuide": false } },
+      ] },
+    ] },
+    { title: "Diff", sub: [
+      { key: "diffEditor.renderSideBySide", title: "Layout", values: [
+        { value: true, name: "Side by side, inline when narrow", also: { "diffEditor.useInlineViewWhenSpaceIsLimited": true } },
+        { value: true, name: "Side by side", also: { "diffEditor.useInlineViewWhenSpaceIsLimited": false } },
+        { value: false, name: "Inline" },
+      ] },
+      // The revert arrows only show while the gutter menu is off.
+      { key: "diffEditor.renderGutterMenu", title: "Gutter", values: [
+        { value: false, name: "Off", also: { "diffEditor.renderMarginRevertIcon": false, "diffEditor.renderIndicators": false } },
+        { value: false, name: "On, +/- signs only",
+          also: { "diffEditor.renderMarginRevertIcon": false, "diffEditor.renderIndicators": true } },
+        { value: true, name: "On", also: { "diffEditor.renderIndicators": true } },
+      ] },
+      { key: "diffEditor.hideUnchangedRegions.enabled", title: "Unchanged code", values: [
+        { value: false, name: "Shown" },
+        { value: true, name: "Collapsed" },
+      ] },
+    ] },
+    { title: "Views", sub: [
+      { key: "scm.showActionButton", title: "Source control buttons", values: together(["scm.showInputActionButton"]) },
+      { key: "scm.countBadge", title: "Activity bar badges",
+        when: () => setting("workbench.activityBar.location") !== "hidden", values: [
+          { value: "all", name: "On", also: { "testing.countBadge": "failed" } },
+          { value: "off", name: "Off", also: { "testing.countBadge": "off" } },
+        ] },
+      { key: "debug.toolBarLocation", title: "Debug toolbar", values: [
+        { value: "floating", name: "Floating" },
+        { value: "docked", name: "In Run and Debug" },
+        { value: "commandCenter", name: "In the command center", also: { "window.commandCenter": true } },
+        { value: "hidden", name: "Hidden" },
+      ] },
+      { key: "workbench.editor.useModal", title: "Settings editors", values: [
+        { value: "some", name: "In a modal" },
+        { value: "off", name: "In a tab" },
+      ] },
+    ] },
+    { title: "Zen mode", sub: [
+      { key: "zenMode.fullScreen", title: "Full screen", values: ON_OFF },
+      { key: "zenMode.centerLayout", title: "Centered", values: ON_OFF },
+      { key: "zenMode.showTabs", title: "Tabs", values: [
+        { value: "multiple", name: "Shown" },
+        { value: "none", name: "Hidden" },
+      ] },
+      { key: "zenMode.hideActivityBar", title: "Bars", values: [
+        { value: true, name: "Hidden", also: { "zenMode.hideStatusBar": true } },
+        { value: false, name: "Shown", also: { "zenMode.hideStatusBar": false } },
+      ] },
+      { key: "zenMode.hideLineNumbers", title: "Line numbers", values: [
+        { value: true, name: "Hidden" },
+        { value: false, name: "Shown" },
+      ] },
+    ] },
+  ] },
+];
 
 // Settings an older VS Code doesn't have are skipped
 const registered = (key) => vscode.workspace.getConfiguration().inspect(key)?.defaultValue !== undefined;
@@ -233,29 +605,100 @@ const registered = (key) => vscode.workspace.getConfiguration().inspect(key)?.de
 function setupChanges() {
   const cfg = vscode.workspace.getConfiguration();
   return Object.keys(SETUP).filter(registered).map((key) => ({ key, got: cfg.get(key) }))
-    .filter(({ key, got }) => got !== SETUP[key]);
+    .filter(({ key, got }) => !allowed(key).includes(got));
 }
 
 function setupText({ key, got }) {
   if (key === "workbench.colorTheme") return "the theme is " + got + ", not " + THEME;
   if (key === "workbench.experimental.modernUI") return "the modern layout is off";
-  return "tabs are " + got + ", not pill";
+  if (key === PANEL) return "the panel is set to the " + got + ", not the bottom";
+  if (key === "workbench.experimental.modernUIUppercaseViewHeaders") return "view headers are uppercase";
+  if (key === "workbench.editor.titleScrollbarSizing") return "the tab scrollbar is " + got + ", not default";
+  if (key === "workbench.editor.titleScrollbarVisibility") return "the tab scrollbar is " + got + ", not auto";
+  if (key === "workbench.layoutControl.type") return "the layout controls show " + got + ", not toggles";
+  if (key === "workbench.shadows") return "shadows are on";
+  if (key === "window.menuBarVisibility") return "the menu bar is " + got + ", not classic";
+  if (key === "editor.minimap.side") return "the minimap is on the " + got;
+  if (key === "workbench.editor.pinnedTabSizing") return "pinned tabs are " + got + ", not normal size";
+  if (key === "workbench.editor.showIcons") return "tabs have no file icons";
+  if (key === "workbench.editor.labelFormat") return "tab labels are " + got + ", not default";
+  if (key === "workbench.editor.tabSizing") return "tabs are sized " + got + ", not fit";
+  if (key === "workbench.editor.decorations.badges") return "tabs have no status badges";
+  if (key === "workbench.editor.decorations.colors") return "tab names aren't colored by status";
+  if (key === "workbench.editor.highlightModifiedTabs") return "modified tabs are highlighted";
+  if (key === "workbench.statusBar.visible") return "the status bar is hidden";
+  if (key === "workbench.secondarySideBar.defaultVisibility") return "the secondary sidebar opens with new windows";
+  if (key === "workbench.notifications.position") return "notifications show bottom left, not on the right";
+  if (key === "workbench.sideBar.location") return "the sidebar is on the right";
+  if (key === "workbench.editor.tabActionLocation") return "tab close buttons are on the left";
+  if (key === SHOW_TABS) return "only the active file has a tab";
+  if (key === "workbench.secondarySideBar.showLabels") return "the secondary sidebar shows labels";
+  if (key === "workbench.iconTheme") return "the file icons are " + (got || "off") + ", not Seti";
+  if (key === "workbench.navigationControl.enabled") return "the back and forward arrows are hidden";
+  if (key === "workbench.view.alwaysShowHeaderActions") return "view header actions are always shown";
+  if (key === "workbench.tree.renderIndentGuides") return "tree indent guides are " + got + ", not on hover";
+  if (key === "terminal.integrated.tabs.enabled") return "the terminal tab list is off";
+  if (key === "terminal.integrated.tabs.location") return "terminal tabs are on the left";
+  if (key === "editor.renderLineHighlight") return "the current line highlight is " + got + ", not gutter and line";
+  if (key === "editor.renderWhitespace") return "whitespace is shown as " + got + ", not in selections";
+  if (key === "editor.minimap.renderCharacters") return "the minimap draws characters, not blocks";
+  if (key === "scm.diffDecorations") return "git change marks are " + got + ", not all";
+  if (key === "workbench.editor.empty.hint") return "new files show the empty editor hint";
+  if (key === "editor.bracketPairColorization.enabled") return "brackets aren't colored by pair";
+  if (key === "workbench.notifications.showInTitleBar") return "the notification bell is hidden";
+  if (key === "window.border") return "the window border is " + got + ", not colored";
+  if (key === "window.menuStyle") return "menus are " + got + ", not inherited from the title bar";
+  if (key === "window.dialogStyle") return "dialogs are " + got + ", not native";
+  if (key === "workbench.reduceTransparency") return "reduced transparency is " + got;
+  if (key === "editor.minimap.showSlider") return "the minimap slider always shows, not on hover";
+  if (key === "editor.minimap.size") return "the minimap is sized to " + got + ", not proportional";
+  if (key === "editor.inlayHints.enabled") return "inlay hints are " + valueName(got).toLowerCase() + ", not shown only while Ctrl+Alt is held";
+  if (key === "explorer.decorations.colors") return "Explorer file names aren't colored by git status";
+  if (key === "explorer.decorations.badges") return "Explorer files have no git status letters";
+  if (key === "problems.decorations.enabled") return "files with problems aren't marked";
+  if (key === "debug.enableStatusBarColor") return "debugging doesn't color the status bar";
+  if (key === "window.autoDetectColorScheme") return "the theme follows the OS color mode";
+  if (key === "window.autoDetectHighContrast") return "high contrast doesn't follow the OS";
+  if (key === "window.systemColorTheme") return "native menus and dialogs are " + got + ", not dark";
+  if (key === "editor.lightbulb.enabled") return "the code action lightbulb is shown";
+  if (key === "notebook.stickyScroll.mode") return "notebook sticky scroll is flat, not indented";
+  if (key === "multiDiffEditor.experimental.variant") return "multi-file diffs are drawn as cards";
+  if (key === "git.decorations.enabled") return "git doesn't color files in the Explorer and tabs";
+  if (key === "problems.visibility") return "problems are hidden throughout the window";
+  if (key === "workbench.tips.enabled") return "empty editors show shortcut tips";
+  if (key === "terminal.integrated.initialHint") return "new terminals show a hint";
+  return "the activity bar hides itself";
 }
 
 // Put the theme and layout back: in the user settings, and in the workspace where it overrides them.
 async function restoreSetup() {
   const cfg = vscode.workspace.getConfiguration();
   const T = vscode.ConfigurationTarget;
-  for (const { key } of setupChanges()) {
+  const changes = setupChanges();
+  for (const { key } of changes) {
     const info = cfg.inspect(key);
     if (info.workspaceValue !== undefined && writable()) await cfg.update(key, undefined, T.Workspace);
-    if (info.globalValue !== SETUP[key]) await cfg.update(key, SETUP[key], T.Global);
+    if (!allowed(key).includes(info.globalValue)) await cfg.update(key, allowed(key)[0], T.Global);
   }
+  // The setting only places the panel in new windows; this one is moved too.
+  if (changes.some((c) => c.key === PANEL)) await vscode.commands.executeCommand("workbench.action.positionPanelBottom");
 }
 
 async function writeJson(file, value) {
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(file, ".."));
   await vscode.workspace.fs.writeFile(file, Buffer.from(JSON.stringify(value, null, 2) + "\n"));
+}
+
+// TERMINAL_CURSOR applied to the user settings. The user value is compared, so a workspace value that can't be dropped doesn't loop.
+async function syncCursor() {
+  if (leaving) return;
+  for (const [key, from] of Object.entries(TERMINAL_CURSOR)) {
+    if (!registered(key)) continue;
+    const want = from(vscode.workspace.getConfiguration());
+    const info = vscode.workspace.getConfiguration().inspect(key);
+    const workspace = info.workspaceValue !== undefined && info.workspaceValue !== want && writable();
+    if ((info.globalValue ?? info.defaultValue) !== want || workspace) await setLayout(key, want);
+  }
 }
 
 // Global storage on this machine: VS Code hands out file: or, lately, vscode-userdata: URIs.
@@ -284,6 +727,7 @@ async function applyLayout() {
   for (const k of fresh) {
     if (cfg.inspect(k).globalValue !== LAYOUT[k]) await cfg.update(k, LAYOUT[k], vscode.ConfigurationTarget.Global);
   }
+  if (fresh.includes(PANEL)) await vscode.commands.executeCommand("workbench.action.positionPanelBottom");
 }
 
 // The install's list of notes, which revert.js reads. An update starts a new install folder.
@@ -445,6 +889,7 @@ function presetItem(p, hex, description) {
 // Presets for one knob: arrow keys preview live, Enter keeps, Esc reverts.
 // A window that can't be written to reopens in a workspace first.
 function pickKnob(knob) {
+  if (colorPanel) return colorPanel.reveal();
   if (!writable()) {
     if (vscode.workspace.workspaceFolders) reopenInWorkspace(knob);
     else vscode.window.showInformationMessage("Open a folder first.");
@@ -455,18 +900,23 @@ function pickKnob(knob) {
   const done = () => { picking = false; scheduleCheck(); };
   const spec = KNOBS[knob];
   const before = current();
-  const mark = (hex) => ((before[knob] || null) === hex ? "  (current)" : "");
+  const describe = (...parts) => parts.filter(Boolean).join(" · ");
+  const mark = (hex) => (before[knob] || null) === hex && "Current";
+  const DEFAULT = { background: null, accent: null };
   let items;
+  let bottom = [];
   if (knob === "background") {
     // Picking the default clears this workspace's own value.
     items = BACKGROUNDS.map((p, i) => {
       const hex = i === 0 ? null : p.hex;
-      return presetItem(p, hex, p.hex + "  · " + p.accent + (i === 0 ? "  · default" : "") + mark(hex));
+      return presetItem(p, hex, describe(mark(hex)));
     });
+    // Both knobs back to the default pair.
+    if (isCustom(before)) bottom = [{ label: "$(discard)  Reset to default", description: pairName(DEFAULT), reset: true }];
   } else {
     const linked = nameOf("accent", linkedAccent(before.background));
-    items = [{ label: "$(link)  Linked to background", description: linked + mark(null), hex: null, preset: true }]
-      .concat(ACCENTS.map((p) => presetItem(p, p.hex, p.hex + mark(p.hex))));
+    items = ACCENTS.map((p) => presetItem(p, p.hex, describe(mark(p.hex))));
+    bottom = [{ label: "$(link)  Linked to background", description: describe(linked, mark(null)), hex: null, preset: true }];
   }
 
   const qp = vscode.window.createQuickPick();
@@ -475,31 +925,21 @@ function pickKnob(knob) {
   qp.items = items.concat([
     { label: "", kind: vscode.QuickPickItemKind.Separator },
     { label: "$(edit)  Custom…", custom: true },
-  ]);
+  ], bottom);
   let accepted = false;
   qp.onDidChangeActive((active) => {
     const item = active[0];
     if (item && item.preset) preview(withKnob(before, knob, item.hex));
+    if (item && item.reset) preview(DEFAULT);
   });
   qp.onDidAccept(async () => {
     const item = qp.selectedItems[0];
     if (!item) return;
     accepted = true;
     qp.hide();
-    if (!item.custom) {
-      showTip(0);
-      return applyToWorkspace(withKnob(before, knob, item.hex)).finally(done);
-    }
-    const input = await vscode.window.showInputBox({
-      title: "Themepane: " + spec.title,
-      prompt: knob === "background"
-        ? "Hex color for the frame, e.g. #1f4a33. The panes get a deep shade of it. Keep it dark enough for light text."
-        : "Hex color, e.g. #d9bb66. Light colors get dark button text; colorfulness is capped so nothing glows.",
-      value: before[knob] || "",
-      validateInput: (v) => (tint.normalizeHex(v) ? null : "Enter a hex color like #1c2a1f"),
-    });
-    showTip(input ? 0 : TIP_DELAY);
-    await applyToWorkspace(input ? withKnob(before, knob, tint.normalizeHex(input)) : before).finally(done);
+    if (item.custom) return pickCustom(knob, before, done);
+    showTip(0);
+    return applyToWorkspace(item.reset ? DEFAULT : withKnob(before, knob, item.hex)).finally(done);
   });
   qp.onDidHide(() => {
     if (!accepted) {
@@ -511,8 +951,223 @@ function pickKnob(knob) {
   qp.show();
 }
 
+// Custom…: a color field in an editor tab (panel.html, panel.js). Every change previews on the
+// window; Apply or Enter keeps it, Cancel, Esc or closing the tab goes back to `before`.
+let colorPanel = null;
+async function pickCustom(knob, before, done) {
+  const e = effective(before);
+  const start = e[knob] || tint.colorsFor(e.background, null)["button.background"] || "#0078d4";
+  // Picking Graphite clears the workspace value, as it does in the menu.
+  const stateOf = (hex) => withKnob(before, knob, knob === "background" && hex === DEFAULT_BACKGROUND ? null : hex);
+  preview(before);
+  const root = ctx.extensionUri;
+  const title = "Custom " + KNOBS[knob].title.toLowerCase();
+  const panel = vscode.window.createWebviewPanel("themepane.color", title,
+    vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [root] });
+  colorPanel = panel;
+  panel.iconPath = vscode.Uri.joinPath(root, "images", "icon.png");
+  let kept = false;
+  panel.webview.onDidReceiveMessage((m) => {
+    const hex = tint.normalizeHex(m.hex || "");
+    if (m.type === "ready") {
+      const presets = KNOBS[knob].presets.map(({ name, hex }) => ({ name, hex }));
+      panel.webview.postMessage({ type: "init", knob, title, hex: start, presets });
+    }
+    if (m.type === "preview" && hex) preview(stateOf(hex));
+    if (m.type === "apply" && hex) {
+      kept = true;
+      showTip(0);
+      applyToWorkspace(stateOf(hex)).finally(done);
+      panel.dispose();
+    }
+    if (m.type === "cancel") panel.dispose();
+  });
+  panel.onDidDispose(() => {
+    colorPanel = null;
+    if (kept) return;
+    showTip(TIP_DELAY);
+    applyToWorkspace(before).finally(done);
+  });
+  const nonce = require("crypto").randomBytes(16).toString("base64");
+  const src = (file) => panel.webview.asWebviewUri(vscode.Uri.joinPath(root, file)).toString();
+  const html = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, "panel.html"))).toString("utf8");
+  const fill = { csp: panel.webview.cspSource, nonce, tint: src("tint.js"), script: src("panel.js") };
+  panel.webview.html = html.replace(/\{\{(\w+)\}\}/g, (_, k) => fill[k]);
+}
+
+// Set in the user settings, dropping a workspace value that would hide it. VS Code's own default
+// is written as unset, unless Themepane sets that key.
+async function setLayout(key, value) {
+  const cfg = vscode.workspace.getConfiguration();
+  const T = vscode.ConfigurationTarget;
+  const info = cfg.inspect(key);
+  if (info.workspaceValue !== undefined && writable()) await cfg.update(key, undefined, T.Workspace);
+  await cfg.update(key, value === info.defaultValue && !(key in LAYOUT) ? undefined : value, T.Global);
+}
+
+// "visibleInWorkspace" → "Visible in workspace", "bottom-right" → "Bottom right".
+function valueName(value) {
+  if (typeof value === "boolean") return value ? "On" : "Off";
+  const words = String(value).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/-/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const optionsOf = (choice) => choice.options || (choice.options = choice.values.map((v) => (typeof v === "object" ? v : { value: v })));
+const optionName = (o) => o.name || valueName(o.value);
+// An option's other keys, leaving out any this VS Code doesn't have (window controls on a Mac).
+const alsoOf = (o) => Object.entries(o.also || {}).filter(([k]) => registered(k));
+// Whether picking the option changes a setting that needs a restart.
+function restarts(choice, o) {
+  const cfg = vscode.workspace.getConfiguration();
+  const sets = ("value" in o ? [[choice.key, o.value]] : []).concat(alsoOf(o));
+  return sets.some(([k, v]) => RESTARTS.includes(k) && cfg.get(k) !== v);
+}
+
+function isCurrent(choice, o) {
+  const cfg = vscode.workspace.getConfiguration();
+  return (!("value" in o) || cfg.get(choice.key) === o.value) && alsoOf(o).every(([k, v]) => cfg.get(k) === v);
+}
+
+function currentName(choice) {
+  const o = optionsOf(choice).find((o) => isCurrent(choice, o));
+  return o ? optionName(o) : valueName(vscode.workspace.getConfiguration().get(choice.key));
+}
+
+// Themepane's own value where it sets one, else VS Code's; an option's `also` keys count too.
+const defaultOf = (key) => (key in LAYOUT ? LAYOUT[key] : vscode.workspace.getConfiguration().inspect(key).defaultValue);
+function defaultOption(choice) {
+  const value = defaultOf(choice.key);
+  const options = optionsOf(choice).filter((o) => o.value === value);
+  return options.find((o) => alsoOf(o).every(([k, v]) => defaultOf(k) === v)) || options[0];
+}
+
+
+async function applyOption(choice, o) {
+  if ("value" in o) await setLayout(choice.key, o.value);
+  for (const [k, v] of alsoOf(o)) await setLayout(k, v);
+}
+
+// Registered settings only; an item with `sub` stays while any of its settings does.
+const usable = (choices) => choices.map((c) => (c.sub ? { ...c, sub: usable(c.sub) } : c))
+  .filter((c) => (c.sub ? c.sub.length : registered(c.key)));
+const flatten = (choices) => choices.flatMap((c) => (c.sub ? flatten(c.sub) : [c]));
+
+const layoutGroups = () => LAYOUT_CHOICES.map((g) => ({ group: g.group, items: usable(g.items) })).filter((g) => g.items.length);
+const allChoices = () => flatten(layoutGroups().flatMap((g) => g.items));
+
+// Back to Themepane's layout: its own values, everything else unset.
+async function resetLayout() {
+  for (const c of allChoices()) {
+    const o = defaultOption(c);
+    if (o) await applyOption(c, o);
+    else await setLayout(c.key, undefined);
+  }
+}
+
+// A toggle shows its value; a row that opens a list shows only the arrow.
+const opens = (c) => !!c.sub || optionsOf(c).length > 2;
+const choiceRow = (c) => (opens(c)
+  ? { label: c.title + "  $(chevron-right)", choice: c }
+  : { label: c.title, description: currentName(c), choice: c });
+
+// Layout, Tabs and option lists. Enter toggles a two-option setting in place and opens a list
+// for the rest; Esc or the back button returns to the list it came from.
+function pickLayout() {
+  hideTip();
+  showLayoutView({ kind: "layout" });
+}
+
+function layoutView(view) {
+  if (view.kind === "options") {
+    const c = view.choice;
+    const def = defaultOption(c);
+    return {
+      title: c.title,
+      placeholder: "Enter picks, Esc goes back",
+      items: optionsOf(c).map((o) => ({
+        label: (isCurrent(c, o) ? "$(check)" : "$(blank)") + "  " + optionName(o) + (restarts(c, o) ? " (Restarts)" : ""),
+        description: o === def ? "default" : "",
+        option: o,
+      })),
+    };
+  }
+  if (view.kind === "list") {
+    const items = view.choices().filter((c) => !c.when || c.when()).map(choiceRow);
+    return { title: view.title, placeholder: "Enter switches or opens, Esc goes back", items };
+  }
+  return {
+    title: "Layout",
+    placeholder: "Enter switches or opens, Esc closes",
+    items: layoutGroups().flatMap((g) => [
+      { label: g.group, kind: vscode.QuickPickItemKind.Separator },
+      ...g.items.filter((c) => !c.when || c.when()).map(choiceRow),
+    ]).concat([
+      { label: "", kind: vscode.QuickPickItemKind.Separator },
+      { label: "$(discard)  Reset layout", description: "Themepane's layout, VS Code's defaults for the rest", reset: true },
+    ]),
+  };
+}
+
+function showLayoutView(view, focus) {
+  const qp = vscode.window.createQuickPick();
+  const draw = (keep) => {
+    const v = layoutView(view);
+    qp.title = "Themepane: " + v.title;
+    qp.placeholder = v.placeholder;
+    qp.items = v.items;
+    const active = v.items.find((i) => keep(i)) || (view.kind === "options" && v.items.find((i) => i.label.startsWith("$(check)")));
+    if (active) qp.activeItems = [active];
+  };
+  draw((i) => focus && i.choice && i.choice.title === focus.title);
+  if (view.parent) qp.buttons = [vscode.QuickInputButtons.Back];
+  let next = null;
+  let busy = false;
+  const go = (v, f) => { next = { view: v, focus: f }; qp.hide(); };
+  qp.onDidTriggerButton(() => go(view.parent, view.from));
+  qp.onDidAccept(async () => {
+    const item = qp.activeItems[0];
+    if (!item || busy) return;
+    if (item.choice && item.choice.sub) {
+      const sub = item.choice;
+      const choices = () => layoutGroups().flatMap((g) => g.items).find((c) => c.title === sub.title).sub;
+      return go({ kind: "list", title: sub.title, choices, parent: view, from: sub });
+    }
+    busy = true;
+    if (item.reset) await enqueue(resetLayout);
+    else if (item.option) {
+      await enqueue(() => applyOption(view.choice, item.option));
+      busy = false;
+      return go(view.parent, view.choice);
+    } else {
+      const options = optionsOf(item.choice);
+      if (opens(item.choice)) {
+        busy = false;
+        return go({ kind: "options", choice: item.choice, parent: view, from: item.choice });
+      }
+      // With mixed values, the option matching the value shown counts as current.
+      let at = options.findIndex((o) => isCurrent(item.choice, o));
+      if (at < 0) at = options.findIndex((o) => o.value === setting(item.choice.key));
+      await enqueue(() => applyOption(item.choice, options[(at + 1) % options.length]));
+    }
+    draw((i) => (item.reset ? i.reset : i.choice && i.choice.title === item.choice.title));
+    busy = false;
+  });
+  // dispose() hides the list again, so the handler would run twice without `closed`.
+  let closed = false;
+  qp.onDidHide(() => {
+    if (closed) return;
+    closed = true;
+    qp.dispose();
+    if (next) return showLayoutView(next.view, next.focus);
+    if (view.parent) return showLayoutView(view.parent, view.from);
+    showTip(TIP_DELAY);
+  });
+  qp.show();
+}
+
 // The main menu: conflict actions, the two knobs, then where colors are kept.
 async function pick() {
+  if (colorPanel) return colorPanel.reveal();
   if (!vscode.workspace.workspaceFolders) {
     vscode.window.showInformationMessage("Open a folder first.");
     return;
@@ -535,7 +1190,7 @@ async function pick() {
       { label: "$(themepane-background)  Background", description: nameOf("background", e.background) + (state.background ? "" : " (default)"), knob: "background" },
       { label: "$(themepane-accent)  Accent", description: nameOf("accent", e.accent) + (state.accent ? "" : " (linked)"), knob: "accent" }
     );
-    if (isCustom(state)) items.push({ label: "$(discard)  Reset to default", clear: true });
+    if (layoutGroups().length) items.push({ label: "$(layout)  Layout", description: "Window, editor, title bar", layout: true });
     items.push(separator);
   }
   const saved = savedWorkspace();
@@ -557,7 +1212,7 @@ async function pick() {
   items.push(...updateItems());
 
   const choice = await vscode.window.showQuickPick(items, { title: "Themepane" });
-  if (!choice || !choice.knob) showTip(TIP_DELAY);
+  if (!choice || !(choice.knob || choice.layout)) showTip(TIP_DELAY);
   if (!choice) return;
   if (choice.toggle) {
     await config("projectColor").update("workspaceOnly", !only || undefined, vscode.ConfigurationTarget.Global);
@@ -568,7 +1223,7 @@ async function pick() {
   if (choice.ignore) return ignoreConflict(conflict);
   if (choice.openFile) return vscode.window.showTextDocument(choice.openFile);
   if (choice.reopen) return reopenInWorkspace(elsewhere || isCustom(state) ? null : "menu");
-  if (choice.clear) return applyToWorkspace({ background: null, accent: null });
+  if (choice.layout) return pickLayout();
   if (choice.check) return checkUpdate(true);
   if (choice.update) return installUpdate(choice.update);
   if (choice.skipUpdate) return saveUpdateState({ skip: choice.skipUpdate.version });
@@ -767,7 +1422,7 @@ function findConflict() {
   const all = wb.get("colorCustomizations") || {};
   const blocks = themeBlocks(all, wb.get("colorTheme"));
   const e = effective(current());
-  const want = tint.colorsFor(e.background, e.accent);
+  const want = palette(e);
   const got = {};
   const keys = Object.keys(want).filter((k) => {
     let v = all[k];
@@ -1074,6 +1729,7 @@ function activate(context) {
   updateStatus();
   enqueue(applyDefaults);
   enqueue(() => applyLayout().catch((e) => console.error("Themepane: layout not set", e)));
+  enqueue(syncCursor);
   refresh();
   resumePick();
   checkElsewhere(true);
@@ -1090,6 +1746,7 @@ function activate(context) {
     vscode.commands.registerCommand("projectColor.pick", pick),
     vscode.commands.registerCommand("projectColor.pickBackground", () => pickKnob("background")),
     vscode.commands.registerCommand("projectColor.pickAccent", () => pickKnob("accent")),
+    vscode.commands.registerCommand("projectColor.pickLayout", pickLayout),
     vscode.commands.registerCommand("projectColor.cleanUp", cleanUp),
     vscode.commands.registerCommand("projectColor.checkUpdates", () => checkUpdate(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1097,6 +1754,9 @@ function activate(context) {
       else if (e.affectsConfiguration("projectColor")) updateStatus();
       if (e.affectsConfiguration("workbench.colorCustomizations") || e.affectsConfiguration("projectColor") ||
           Object.keys(SETUP).some((k) => e.affectsConfiguration(k))) scheduleCheck();
+      if (CURSOR_KEYS.some((k) => e.affectsConfiguration(k))) enqueue(syncCursor);
+      // The active tab's color depends on the tab style.
+      if (e.affectsConfiguration(TAB_STYLE) && !leaving) { enqueue(applyDefaults); refresh(); }
     }),
     vscode.extensions.onDidChange(() => { warnCulprits(); scheduleCheck(); }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => checkElsewhere(false))
