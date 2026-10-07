@@ -462,8 +462,10 @@ const HIDDEN = [
   "editorOverviewRuler.border",
 ];
 
-// Pill tabs: the active one matches the selected sidebar row, the rest are clear.
+// Pill tabs: the active one matches the selected sidebar row, the rest are clear. Its hover is
+// the same color, so hovering the tab you are already in never changes it.
 const PILL_ACTIVE = ["modernEditorTab.activeBackground", "modernEditorTab.activeHoverBackground"];
+const PILL_ACTIVE_HOVER = ["modernEditorTab.activeHoverBackground"];
 const PILL_HOVER = ["modernEditorTab.hoverBackground"];
 const PILL_CLEAR = ["modernEditorTab.inactiveBackground"];
 
@@ -479,7 +481,8 @@ function paneOf(frame) {
 
 // Every key Themepane owns for a background and an accent (either may be null). Connected tabs
 // share `modernEditorTab.activeBackground` with pills, so it's left out for them and their active
-// tab falls back to `tab.activeBackground`, the editor's own color.
+// tab falls back to `tab.activeBackground`, the editor's own color; its hover is set to that same
+// color, which the fallback doesn't cover.
 // No accent borrows the background's hue; a gray source leaves Dark Modern blue.
 function colorsFor(background, accent, { connected = false } = {}) {
   const out = {};
@@ -493,7 +496,8 @@ function colorsFor(background, accent, { connected = false } = {}) {
     set(FRAME, background);
     Object.assign(out, FRAME_TEXT);
     Object.assign(out, READABLE);
-    if (!connected) set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
+    if (connected) set(PILL_ACTIVE_HOVER, out["editor.background"]);
+    else set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
     set(PILL_HOVER, toHex(frame.h, frame.s, Math.min(1, frame.l + 0.04)));
     set(PILL_CLEAR, "#00000000");
   }

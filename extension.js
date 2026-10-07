@@ -113,6 +113,7 @@ const PENDING = "themepane.pickOnOpen";
 const CULPRIT_STATE = "themepane.culprits";
 const IGNORED = "themepane.ignoredConflict";
 const IGNORED_SETUP = "themepane.ignoredSetup";
+const RECENTS = "themepane.recentColors";
 
 let ctx;
 let status;
@@ -246,7 +247,6 @@ const FIXED = {
   "workbench.secondarySideBar.defaultVisibility": "hidden",
   "workbench.sideBar.location": "left",
   "workbench.editor.tabActionLocation": "right",
-  "workbench.secondarySideBar.showLabels": false,
   "workbench.iconTheme": "vs-seti",
   "workbench.navigationControl.enabled": true,
   "workbench.view.alwaysShowHeaderActions": false,
@@ -295,6 +295,7 @@ const MENU_DEFAULTS = {
   "workbench.layoutControl.enabled": true,
   "workbench.notifications.position": "bottom-right",
   "workbench.panel.showLabels": false,
+  "workbench.secondarySideBar.showLabels": false,
   "window.titleBarStyle": "custom",
   "window.customTitleBarVisibility": "auto",
   "editor.minimap.enabled": true,
@@ -318,9 +319,11 @@ const allowed = (key) => [].concat(SETUP[key]);
 
 // The Layout menu, in groups. Values are listed by hand: the API doesn't expose a setting's enum.
 // An option can also set other keys (`also`); one without a `value` leaves the setting itself alone.
-// Two options toggle on Enter; more open a list.
+// Up to three options cycle on Enter; more open a list.
 const ON_OFF = [true, false];
 const PINNED_ROW = "workbench.editor.pinnedTabsOnSeparateRow";
+// The bottom panel and the secondary sidebar label their tabs the same way.
+const SIDE_LABELS = "workbench.secondarySideBar.showLabels";
 // Sticky scroll is one toggle for the editor and all of these.
 const STICKY = ["workbench.tree.enableStickyScroll", "terminal.integrated.stickyScroll.enabled", "notebook.stickyScroll.enabled",
   "chat.stickyScroll.enabled"];
@@ -363,12 +366,11 @@ const LAYOUT_CHOICES = [
       { value: true, name: "On, collapsed", also: { "explorer.fileNesting.expand": false } },
       { value: true, name: "On", also: { "explorer.fileNesting.expand": true } },
     ] },
-    { key: "workbench.panel.showLabels", title: "Bottom panel tabs", values: [
-      { value: true, name: "Names" },
-      { value: false, name: "Icons" },
+    { key: "workbench.panel.showLabels", title: "Panel tabs", values: [
+      { value: true, name: "Names", also: { [SIDE_LABELS]: true } },
+      { value: false, name: "Icons", also: { [SIDE_LABELS]: false } },
     ] },
     { key: "workbench.notifications.position", title: "Notifications", values: ["bottom-right", "top-right"] },
-    { key: "chat.disableAIFeatures", title: "Turn off AI", values: ON_OFF },
   ] },
   { group: "Editor", items: [
     { title: "Tabs", sub: [
@@ -400,14 +402,23 @@ const LAYOUT_CHOICES = [
       { key: "workbench.editor.showTabIndex", title: "Numbers", when: tabsShown, values: ON_OFF },
       { key: "workbench.editor.enablePreview", title: "Preview", values: ON_OFF },
     ] },
-    { title: "Cursor", sub: [
-      { key: EDITOR_CURSOR, title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
-      { key: EDITOR_BLINK, title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
-      { key: "editor.cursorSmoothCaretAnimation", title: "Smooth movement", values: [
+    { key: "workbench.editor.editorActionsLocation", title: "Toolbar location", values: [
+      { value: "default", name: "Next to the tabs", also: { "workbench.editor.alwaysShowEditorActions": false } },
+      { value: "default", name: "Next to the tabs [All groups]", also: { "workbench.editor.alwaysShowEditorActions": true } },
+      { value: "titleBar", name: "In the title bar" },
+      { value: "hidden", name: "Hidden" },
+    ] },
+    { title: "Breadcrumbs", sub: [
+      { key: "breadcrumbs.enabled", title: "Show", values: ON_OFF },
+      { key: "breadcrumbs.symbolPath", title: "Symbols", when: breadcrumbsShown, values: [
+        ["off", "Off"], ["last", "On, current only"], ["on", "On"],
+      ].map(([value, name]) => ({ value, name, also: { "notebook.breadcrumbs.showCodeCells": value !== "off" } })) },
+      { key: "breadcrumbs.filePath", title: "File path", when: breadcrumbsShown, values: [
         { value: "off", name: "Off" },
-        { value: "explicit", name: "On, but not when typing" },
+        { value: "last", name: "On, file only" },
         { value: "on", name: "On" },
       ] },
+      { key: "breadcrumbs.icons", title: "Icons", when: breadcrumbsShown, values: ON_OFF },
     ] },
     { title: "Gutter", sub: [
       { key: "editor.lineNumbers", title: "Line numbers", values: ["on", "relative", "interval", "off"] },
@@ -457,10 +468,14 @@ const LAYOUT_CHOICES = [
         { value: true, name: "Both", also: { "git.blame.statusBarItem.enabled": true } },
       ] },
     ] },
-    { key: "editor.minimap.enabled", title: "Minimap", values: [
-      { value: false, name: "Off" },
-      { value: true, name: "On, autohide", also: { "editor.minimap.autohide": "mouseover" } },
-      { value: true, name: "On", also: { "editor.minimap.autohide": "none" } },
+    { title: "Cursor", sub: [
+      { key: EDITOR_CURSOR, title: "Shape", values: ["line", "line-thin", "block", "block-outline", "underline", "underline-thin"] },
+      { key: EDITOR_BLINK, title: "Blinking", values: ["blink", "smooth", "phase", "expand", "solid"] },
+      { key: "editor.cursorSmoothCaretAnimation", title: "Smooth movement", values: [
+        { value: "off", name: "Off" },
+        { value: "explicit", name: "On, but not when typing" },
+        { value: "on", name: "On" },
+      ] },
     ] },
     { key: "editor.guides.indentation", title: "Guides", values: [
       { value: true, name: "Indentation",
@@ -471,6 +486,17 @@ const LAYOUT_CHOICES = [
         "editor.guides.bracketPairs": true, "editor.guides.bracketPairsHorizontal": true } },
       { value: false, name: "Off", also: { "editor.guides.highlightActiveIndentation": false, "editor.guides.bracketPairs": false } },
     ] },
+    { key: "editor.wordWrap", title: "Word wrap", values: [
+      ["off", "Off"],
+      ["on", "At the window edge"],
+      ["wordWrapColumn", "At the wrap column"],
+      ["bounded", "At the edge or column, whichever is first"],
+    ].map(([value, name]) => ({ value, name, also: { "notebook.output.wordWrap": value !== "off" } })) },
+    { key: "editor.minimap.enabled", title: "Minimap", values: [
+      { value: false, name: "Off" },
+      { value: true, name: "On, autohide", also: { "editor.minimap.autohide": "mouseover" } },
+      { value: true, name: "On", also: { "editor.minimap.autohide": "none" } },
+    ] },
     { key: "editor.scrollbar.vertical", title: "Scrollbars", values: [
       { value: "hidden", name: "Off", also: { "editor.scrollbar.horizontal": "hidden" } },
       { value: "auto", name: "On, when needed", also: { "editor.scrollbar.horizontal": "auto" } },
@@ -478,30 +504,6 @@ const LAYOUT_CHOICES = [
     ] },
     { key: "editor.smoothScrolling", title: "Smooth scrolling",
       values: together(["workbench.list.smoothScrolling", "terminal.integrated.smoothScrolling"]) },
-    { key: "editor.wordWrap", title: "Word wrap", values: [
-      ["off", "Off"],
-      ["on", "At the window edge"],
-      ["wordWrapColumn", "At the wrap column"],
-      ["bounded", "At the edge or column, whichever is first"],
-    ].map(([value, name]) => ({ value, name, also: { "notebook.output.wordWrap": value !== "off" } })) },
-    { key: "workbench.editor.editorActionsLocation", title: "Toolbar location", values: [
-      { value: "default", name: "Next to the tabs", also: { "workbench.editor.alwaysShowEditorActions": false } },
-      { value: "default", name: "Next to the tabs [All groups]", also: { "workbench.editor.alwaysShowEditorActions": true } },
-      { value: "titleBar", name: "In the title bar" },
-      { value: "hidden", name: "Hidden" },
-    ] },
-    { title: "Breadcrumbs", sub: [
-      { key: "breadcrumbs.enabled", title: "Show", values: ON_OFF },
-      { key: "breadcrumbs.symbolPath", title: "Symbols", when: breadcrumbsShown, values: [
-        ["off", "Off"], ["last", "On, current only"], ["on", "On"],
-      ].map(([value, name]) => ({ value, name, also: { "notebook.breadcrumbs.showCodeCells": value !== "off" } })) },
-      { key: "breadcrumbs.filePath", title: "File path", when: breadcrumbsShown, values: [
-        { value: "off", name: "Off" },
-        { value: "last", name: "On, file only" },
-        { value: "on", name: "On" },
-      ] },
-      { key: "breadcrumbs.icons", title: "Icons", when: breadcrumbsShown, values: ON_OFF },
-    ] },
     { key: "editor.stickyScroll.enabled", title: "Sticky scroll", values: together(STICKY) },
   ] },
   { group: "Title bar", items: [
@@ -518,14 +520,6 @@ const LAYOUT_CHOICES = [
       { value: false, name: "Off" },
       { value: "whenOpen", name: "On, when a browser is open" },
       { value: true, name: "On" },
-    ] },
-    // VS Code hides these while AI is off, and agent status lives in the command center.
-    { key: "chat.agentsControl.enabled", title: "Agent status", when: () => aiOn() && setting("window.commandCenter"),
-      values: [{ value: "hidden", name: "Off" }, { value: "compact", name: "On, compact" }, { value: "badge", name: "On" }] },
-    { key: "chat.titleBar.openInAgentsWindow.enabled", title: "Agents window button", when: aiOn, values: ON_OFF },
-    { key: "chat.titleBar.signIn.enabled", title: "Copilot sign in", when: aiOn, values: [
-      { value: true, name: "In the title bar" },
-      { value: false, name: "In the status bar" },
     ] },
     { key: "update.titleBar", title: "Update indicator", values: ON_OFF },
   ] },
@@ -596,6 +590,14 @@ const LAYOUT_CHOICES = [
         { value: false, name: "Shown" },
       ] },
     ] },
+    { title: "Copilot", sub: [
+      { key: "chat.disableAIFeatures", title: "Disable Copilot", values: ON_OFF },
+      // VS Code hides the rest while AI is off, and agent status lives in the command center.
+      { key: "chat.agentsControl.enabled", title: "Agent status", when: () => aiOn() && setting("window.commandCenter"),
+        values: [{ value: "hidden", name: "Off" }, { value: "compact", name: "On, compact" }, { value: "badge", name: "On" }] },
+      { key: "chat.titleBar.openInAgentsWindow.enabled", title: "Agents window button", when: aiOn, values: ON_OFF },
+      { key: "chat.titleBar.signIn.enabled", title: "Copilot sign in", when: aiOn, values: ON_OFF },
+    ] },
   ] },
 ];
 
@@ -632,7 +634,6 @@ function setupText({ key, got }) {
   if (key === "workbench.sideBar.location") return "the sidebar is on the right";
   if (key === "workbench.editor.tabActionLocation") return "tab close buttons are on the left";
   if (key === SHOW_TABS) return "only the active file has a tab";
-  if (key === "workbench.secondarySideBar.showLabels") return "the secondary sidebar shows labels";
   if (key === "workbench.iconTheme") return "the file icons are " + (got || "off") + ", not Seti";
   if (key === "workbench.navigationControl.enabled") return "the back and forward arrows are hidden";
   if (key === "workbench.view.alwaysShowHeaderActions") return "view header actions are always shown";
@@ -951,33 +952,50 @@ function pickKnob(knob) {
   qp.show();
 }
 
-// Custom…: a color field in an editor tab (panel.html, panel.js). Every change previews on the
-// window; Apply or Enter keeps it, Cancel, Esc or closing the tab goes back to `before`.
+// Custom…: the pair editor in an editor tab (panel.html, panel.js). Every change previews on
+// the window; Apply or Enter keeps it, Cancel, Esc or closing the tab goes back to `before`.
 let colorPanel = null;
 async function pickCustom(knob, before, done) {
   const e = effective(before);
-  const start = e[knob] || tint.colorsFor(e.background, null)["button.background"] || "#0078d4";
-  // Picking Graphite clears the workspace value, as it does in the menu.
-  const stateOf = (hex) => withKnob(before, knob, knob === "background" && hex === DEFAULT_BACKGROUND ? null : hex);
+  // Picking Graphite clears the workspace value, as it does in the menu; a null accent keeps
+  // following the background, as "Linked to background" does.
+  const stateOf = (background, accent) => ({
+    ...before,
+    background: background === DEFAULT_BACKGROUND ? null : background,
+    accent: accent || null,
+  });
   preview(before);
   const root = ctx.extensionUri;
-  const title = "Custom " + KNOBS[knob].title.toLowerCase();
+  const title = "Custom colors";
   const panel = vscode.window.createWebviewPanel("themepane.color", title,
     vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [root] });
   colorPanel = panel;
   panel.iconPath = vscode.Uri.joinPath(root, "images", "icon.png");
   let kept = false;
   panel.webview.onDidReceiveMessage((m) => {
-    const hex = tint.normalizeHex(m.hex || "");
     if (m.type === "ready") {
-      const presets = KNOBS[knob].presets.map(({ name, hex }) => ({ name, hex }));
-      panel.webview.postMessage({ type: "init", knob, title, hex: start, presets });
+      const list = (k) => KNOBS[k].presets.map((p) => (k === "background"
+        ? { name: p.name, hex: p.hex, accent: linkedAccent(p.hex) }
+        : { name: p.name, hex: p.hex }));
+      panel.webview.postMessage({
+        type: "init",
+        knob,
+        title,
+        background: e.background,
+        accent: before.accent || null,
+        defaultBackground: DEFAULT_BACKGROUND,
+        presets: { background: list("background"), accent: list("accent") },
+        recents: ctx.globalState.get(RECENTS) || { background: [], accent: [] },
+      });
     }
-    if (m.type === "preview" && hex) preview(stateOf(hex));
-    if (m.type === "apply" && hex) {
+    const background = m.background && tint.normalizeHex(m.background);
+    const accent = m.accent ? tint.normalizeHex(m.accent) : null;
+    if (m.type === "preview" && background) preview(stateOf(background, accent));
+    if (m.type === "apply" && background) {
       kept = true;
       showTip(0);
-      applyToWorkspace(stateOf(hex)).finally(done);
+      rememberCustom(background, accent);
+      applyToWorkspace(stateOf(background, accent)).finally(done);
       panel.dispose();
     }
     if (m.type === "cancel") panel.dispose();
@@ -993,6 +1011,17 @@ async function pickCustom(knob, before, done) {
   const html = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, "panel.html"))).toString("utf8");
   const fill = { csp: panel.webview.cspSource, nonce, tint: src("tint.js"), script: src("panel.js") };
   panel.webview.html = html.replace(/\{\{(\w+)\}\}/g, (_, k) => fill[k]);
+}
+
+// Colors a workspace kept that aren't presets, newest first, so the next panel can offer them.
+function rememberCustom(background, accent) {
+  const held = ctx.globalState.get(RECENTS) || {};
+  const next = {};
+  for (const [knob, hex] of [["background", background], ["accent", accent]]) {
+    const rest = (held[knob] || []).filter((h) => h !== hex);
+    next[knob] = (hex && !presetOf(knob, hex) ? [hex, ...rest] : rest).slice(0, 6);
+  }
+  return ctx.globalState.update(RECENTS, next);
 }
 
 // Set in the user settings, dropping a workspace value that would hide it. VS Code's own default
@@ -1065,13 +1094,13 @@ async function resetLayout() {
 }
 
 // A toggle shows its value; a row that opens a list shows only the arrow.
-const opens = (c) => !!c.sub || optionsOf(c).length > 2;
+const opens = (c) => !!c.sub || optionsOf(c).length > 3;
 const choiceRow = (c) => (opens(c)
   ? { label: c.title + "  $(chevron-right)", choice: c }
   : { label: c.title, description: currentName(c), choice: c });
 
-// Layout, Tabs and option lists. Enter toggles a two-option setting in place and opens a list
-// for the rest; Esc or the back button returns to the list it came from.
+// Layout, Tabs and option lists. Enter cycles a setting with up to three options in place and
+// opens a list for the rest; Esc or the back button returns to the list it came from.
 function pickLayout() {
   hideTip();
   showLayoutView({ kind: "layout" });
