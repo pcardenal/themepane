@@ -1,67 +1,68 @@
 "use strict";
 
-// The custom color panel, running in a webview. tint.js loads first and exports through `module`.
-// It edits the pair: the window it draws, the contrast it carries and both preset lists are all
-// computed here from `colorsFor`, the same function the extension writes settings from.
+// The custom color panel: one wheel for the pair. The background is the outer ring and the
+// accent the disc inside it, angle is hue and radius is chroma; lightness rides two arcs that
+// follow the circle. Which knob you are editing is wherever your pointer is, so there is no
+// switch. Presets are plotted as dots you can tap, and the toggle hides them.
 (() => {
   const vscode = acquireVsCodeApi();
   const tint = module.exports;
   const $ = (id) => document.getElementById(id);
 
-  // The field spans what Themepane draws: backgrounds up to past the readable limit, accents
-  // within tint.js's fill clamp (L 0.5–0.85, C ≤ 0.133). `strip` is the hue rail's L and C.
   const RANGES = {
     background: { L: [0.1, 0.56], C: 0.16, strip: [0.42, 0.1] },
     accent: { L: [0.5, 0.85], C: 0.133, strip: [0.7, 0.12] },
   };
+  const UNSET = {
+    "button.background": "#297aa0", "button.foreground": "#ffffff",
+    "textLink.foreground": "#48a0c7", "editorCursor.foreground": "#bbbebf",
+    "editor.selectionBackground": "#276782dd",
+  };
+  const colorOf = (p, k) => p[k] || UNSET[k];
 
   const lin = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
   const luminance = (rgb) => 0.2126 * lin(rgb[0] / 255) + 0.7152 * lin(rgb[1] / 255) + 0.0722 * lin(rgb[2] / 255);
   const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  function ratio(a, b) {
+  const ratio = (a, b) => {
     const x = luminance(rgbOf(a)), y = luminance(rgbOf(b));
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-  }
-  // Bar text is #cccccc; a frame lighter than LIMIT gives it less than 4.5:1.
+  };
   const BAR = luminance([204, 204, 204]);
   const LIMIT = (BAR + 0.05) / 4.5 - 0.05;
-
-  // A neutral background with no accent leaves the accent keys to the theme, so colorsFor
-  // returns none: what the window would then wear is Dark 2026's own blue.
-  const UNSET = {
-    "button.background": "#297aa0",
-    "button.foreground": "#ffffff",
-    "textLink.foreground": "#48a0c7",
-    "editorCursor.foreground": "#bbbebf",
-    "editor.selectionBackground": "#276782dd",
-  };
-  const colorOf = (p, key) => p[key] || UNSET[key];
-
-  const field = $("field"), hueBar = $("hue"), hexBox = $("hex");
-  const scratch = document.createElement("canvas");
+  const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+  // Only true achromatics: Driftwood sits at C 0.0196 and is a real muted colour with a hue.
+  const NEUTRAL = 0.012;
+  const isNeutral = (hex) => tint.toOklch(hex).C <= NEUTRAL;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
   let knob = "background";
   let presets = { background: [], accent: [] };
   let recents = { background: [], accent: [] };
   let defaultBackground = "#313336";
-  // The live pair, and the OKLCH intent behind each (C may be out of gamut at that hue).
   const colors = { background: "#313336", accent: "#1b6cb2" };
   const coord = { background: { L: 0.4, C: 0.08, h: 250 }, accent: { L: 0.52, C: 0.11, h: 250 } };
-  // Whether the accent is the workspace's own, or still follows the background.
   let accentSet = false;
-  let sent, drawnHue, drawnKnob, frame, partnerTimer;
+  let sent, frame, sugTimer;
 
-  const range = () => RANGES[knob];
+  const range = (k) => RANGES[k || knob];
 
-  // The most colorful shade sRGB holds at this lightness and hue, capped at the range.
+  // Every point in the field and the disc has to land on a distinct colour, so chroma is read
+  // as a fraction of what sRGB actually holds here rather than as an absolute capped value.
   function edgeC(L, h, cap) {
     if (tint.rgbIn(L, cap, h)) return cap;
     let lo = 0, hi = cap;
-    for (let i = 0; i < 16; i++) {
-      const mid = (lo + hi) / 2;
-      if (tint.rgbIn(L, mid, h)) lo = mid; else hi = mid;
-    }
+    for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (tint.rgbIn(L, m, h)) lo = m; else hi = m; }
     return lo;
+  }
+  const edgeOf = (k) => edgeC(coord[k].L, coord[k].h, range(k).C);
+  // Where #cccccc drops under 4.5:1, as a lightness.
+  function contrastL(h, r) {
+    for (let i = 0; i <= 80; i++) {
+      const L = r.L[1] - (i / 80) * (r.L[1] - r.L[0]);
+      const c = tint.rgbIn(L, 0, h);
+      if (c && luminance(c) <= LIMIT) return L;
+    }
+    return r.L[0];
   }
   const presetOf = (k, hex) => presets[k].find((p) => p.hex === hex);
 
@@ -72,171 +73,41 @@
     coord[k].C = o.C;
     if (o.C > 0.002) coord[k].h = o.h;
   }
-
-  // The accent the window wears when the workspace has none: the background's linked preset,
-  // or the fill tint.js derives from the background's own hue.
   function impliedAccent() {
     const p = presetOf("background", colors.background);
     if (p && p.accent) return p.accent;
     return colorOf(tint.colorsFor(colors.background, null), "button.background");
   }
-
-  function syncAccent() {
-    if (!accentSet) setColor("accent", impliedAccent());
-  }
-
-  const accentArg = () => (accentSet ? colors.accent : presetOf("background", colors.background)?.accent || null);
+  const syncAccent = () => { if (!accentSet) setColor("accent", impliedAccent()); };
+  const accentArg = () => (accentSet ? colors.accent : (presetOf("background", colors.background) || {}).accent || null);
   const palette = () => tint.colorsFor(colors.background, accentArg());
 
-  function fromField() {
-    const c = coord[knob];
-    setColor(knob, tint.fromOklch(c.L, c.C, c.h));
-    if (knob === "accent") accentSet = true;
+  // Commit the OKLCH intent for a knob back to a hex.
+  function commit(k) {
+    const c = coord[k];
+    c.C = Math.min(c.C, edgeC(c.L, c.h, range(k).C));
+    setColor(k, tint.fromOklch(c.L, c.C, c.h));
+    if (k === "accent") accentSet = true;
     syncAccent();
+    render();
+    scheduleSug();
   }
-
-  // ---- the field -------------------------------------------------------------------------
-  // Colors are generated at CSS resolution and scaled up; the faded region is then cut out
-  // along a curve, so its edge is a line instead of the per-row staircase a threshold gives.
-  function drawField() {
-    const canvas = field.querySelector("canvas");
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.round(field.clientWidth));
-    const ht = Math.max(1, Math.round(field.clientHeight));
-    const r = range();
-    const h = coord[knob].h;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(ht * dpr);
-    const sw = Math.max(2, Math.ceil(w / 2));
-    const sh = Math.max(2, Math.ceil(ht / 2));
-    scratch.width = sw;
-    scratch.height = sh;
-    const sg = scratch.getContext("2d");
-    const img = sg.createImageData(sw, sh);
-    const lum = new Float32Array(sw * sh);
-    const [lo, hi] = r.L;
-
-    for (let y = 0; y < sh; y++) {
-      const l = hi - (y / (sh - 1)) * (hi - lo);
-      // Past the most colorful drawable shade, the row repeats it, as fromOklch clips.
-      const edge = edgeC(l, h, r.C);
-      for (let x = 0; x < sw; x++) {
-        const rgb = tint.rgbIn(l, Math.min(edge, (x / (sw - 1)) * r.C), h) || tint.rgbIn(l, edge, h);
-        if (!rgb) continue;
-        const i = (y * sw + x) * 4;
-        img.data[i] = rgb[0];
-        img.data[i + 1] = rgb[1];
-        img.data[i + 2] = rgb[2];
-        img.data[i + 3] = 255;
-        lum[y * sw + x] = luminance(rgb);
-      }
-    }
-    sg.putImageData(img, 0, 0);
-
-    const g = canvas.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, ht);
-    g.drawImage(scratch, 0, 0, w, ht);
-    if (knob === "background") fade(g, lum, sw, sh, w / sw, ht / sh);
-    drawnHue = h;
-    drawnKnob = knob;
-  }
-
-  // Thin the rows whose color leaves #cccccc under 4.5:1. The boundary crosses between two
-  // rows, so each column keeps its fraction and the cut follows one smooth curve.
-  function fade(g, lum, w, ht, scaleX, scaleY) {
-    const edgeY = new Float64Array(w);
-    for (let x = 0; x < w; x++) {
-      let y = 0;
-      while (y < ht && lum[y * w + x] > LIMIT) y++;
-      if (y === 0 || y >= ht) { edgeY[x] = y === 0 ? 0 : ht; continue; }
-      const above = lum[(y - 1) * w + x], below = lum[y * w + x];
-      const t = above === below ? 0 : (above - LIMIT) / (above - below);
-      edgeY[x] = y - 1 + Math.min(1, Math.max(0, t));
-    }
-    g.save();
-    g.globalCompositeOperation = "destination-out";
-    g.beginPath();
-    g.moveTo(0, edgeY[0] * scaleY);
-    for (let x = 0; x < w; x++) g.lineTo((x + 0.5) * scaleX, edgeY[x] * scaleY);
-    g.lineTo(w * scaleX, edgeY[w - 1] * scaleY);
-    g.lineTo(w * scaleX, 0);
-    g.lineTo(0, 0);
-    g.closePath();
-    // destination-out keeps 1 - alpha of what is there: 0.725 leaves the old 70/255.
-    g.fillStyle = "rgba(0,0,0,0.725)";
-    g.fill();
-    g.restore();
-  }
-
-  function drawHue() {
-    const canvas = hueBar.querySelector("canvas");
-    const ht = Math.max(1, Math.round(hueBar.clientHeight));
-    canvas.width = 1;
-    canvas.height = ht;
-    const g = canvas.getContext("2d");
-    const [L, C] = range().strip;
-    for (let y = 0; y < ht; y++) {
-      g.fillStyle = tint.fromOklch(L, C, (y / ht) * 360);
-      g.fillRect(0, y, 1, 1);
-    }
-    $("ticks").replaceChildren(...presets[knob].map((p) => {
-      const o = tint.toOklch(p.hex);
-      if (o.C <= 0.02) return null;
-      const i = document.createElement("i");
-      i.style.top = (o.h / 360) * 100 + "%";
-      return i;
-    }).filter(Boolean));
-  }
-
-  // ---- the pair, drawn -------------------------------------------------------------------
-  function pairName() {
-    const bg = presetOf("background", colors.background);
-    const ac = presetOf("accent", colors.accent);
-    const bgName = bg ? bg.name : "Custom";
-    if (!accentSet || colors.accent === impliedAccent()) return bgName;
-    return bgName + " · " + (ac ? ac.name : "Custom");
-  }
-
-  function paintWindow(p) {
-    const frameColor = p["titleBar.activeBackground"];
-    const pane = p["editor.background"];
-    const set = (id, style) => Object.assign($(id).style, style);
-    set("w-bar", { background: frameColor, color: "#cccccc" });
-    set("w-tabs", { background: frameColor });
-    set("w-tab-a", { background: p["modernEditorTab.activeBackground"] || p["tab.activeBackground"], color: "#cccccc" });
-    set("w-tab-b", { background: "transparent", color: "#b5b5b5" });
-    set("w-side", { background: pane });
-    set("w-edit", { background: pane });
-    set("w-sel", { background: p["list.inactiveSelectionBackground"] });
-    set("w-caret", { background: colorOf(p, "editorCursor.foreground") });
-    set("w-selbar", { background: colorOf(p, "editor.selectionBackground") });
-    set("w-btn", { background: colorOf(p, "button.background"), color: colorOf(p, "button.foreground") });
-    set("w-status", { background: frameColor, color: "#cccccc" });
-    $("w-title").textContent = pairName();
-    $("w-statustext").textContent = pairName();
-  }
-
-  // ---- partners --------------------------------------------------------------------------
-  // Backgrounds suggest accents, accents suggest the backgrounds that link to them. Both come
-  // from the preset lists and from colorsFor, never from a judgement made here.
-  const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
 
   function family(hex) {
     const o = tint.toOklch(hex);
-    if (o.C <= 0.02) return "Neutral";
+    if (o.C <= NEUTRAL) return "Neutral";
     if (o.L > 0.82) return "Pearl";
     if (o.L > 0.65) return "Light";
     return o.C < 0.085 ? "Dusty" : "Saturated";
   }
 
-  function accentPartners() {
+  function accentSuggestions() {
+    const b = tint.toOklch(colors.background);
     const near = presets.background.reduce((best, p) => {
-      const o = tint.toOklch(p.hex), b = tint.toOklch(colors.background);
+      const o = tint.toOklch(p.hex);
       const d = Math.hypot(o.L - b.L, o.C - b.C) + hueGap(o.h, b.h) / 900;
       return !best || d < best.d ? { p, d } : best;
     }, null);
-    const bgHue = tint.toOklch(colors.background).h;
     const pane = tint.colorsFor(colors.background, null)["editor.background"];
     const out = [];
     const add = (hex) => {
@@ -248,233 +119,642 @@
       return true;
     };
     if (near && near.p.accent) add(near.p.accent);
-    const opposite = (bgHue + 180) % 360;
-    for (const fam of ["Saturated", "Light", "Pearl"]) {
-      const sorted = presets.accent
-        .filter((p) => family(p.hex) === fam)
-        .sort((a, b) => hueGap(tint.toOklch(a.hex).h, opposite) - hueGap(tint.toOklch(b.hex).h, opposite));
-      for (const p of sorted) if (add(p.hex)) break;
+    const opposite = (b.h + 180) % 360;
+    const fams = ["Saturated", "Dusty", "Light", "Pearl"].map((fam) => presets.accent
+      .filter((p) => family(p.hex) === fam)
+      .sort((x, y) => hueGap(tint.toOklch(x.hex).h, opposite) - hueGap(tint.toOklch(y.hex).h, opposite)));
+    // one from each family first, so the eight read as a spread, then a second from each
+    for (let round = 0; round < 2; round++) {
+      for (const sorted of fams) for (const p of sorted) if (add(p.hex)) break;
     }
-    return out.slice(0, 4);
+    return out.slice(0, 8);
   }
 
-  function backgroundPartners() {
-    const near = presets.accent.reduce((best, p) => {
-      const o = tint.toOklch(p.hex), a = tint.toOklch(colors.accent);
-      const d = Math.hypot(o.L - a.L, o.C - a.C) + hueGap(o.h, a.h) / 900;
-      return !best || d < best.d ? { p, d } : best;
-    }, null);
-    if (!near) return [];
-    return presets.background
-      .filter((p) => p.accent === near.p.hex)
-      .slice(0, 4)
-      .map((p) => ({ hex: p.hex, name: p.name, swatch: p.hex }));
-  }
-
-  function refreshPartners() {
-    const other = knob === "background" ? "accent" : "background";
-    const list = knob === "background" ? accentPartners() : backgroundPartners();
-    $("partners-box").hidden = !list.length;
-    $("partners").replaceChildren(...list.map((item) => {
+  function drawSuggestions() {
+    const other = "accent";
+    const list = accentSuggestions();
+    $("sug-box").hidden = !list.length;
+    $("sug").replaceChildren(...list.map((item) => {
       const b = document.createElement("button");
-      b.className = "partner";
+      b.className = "sug";
       b.type = "button";
-      const dot = document.createElement("i");
-      dot.style.background = item.swatch;
-      b.append(dot, document.createTextNode(item.name));
+      const i = document.createElement("i");
+      i.style.background = item.swatch;
+      b.append(i, document.createTextNode(item.name));
       b.addEventListener("click", () => {
         if (other === "accent") accentSet = true;
         setColor(other, item.hex);
         syncAccent();
         render();
-        schedulePartners();
+        scheduleSug();
       });
       return b;
     }));
   }
+  function scheduleSug() { clearTimeout(sugTimer); sugTimer = setTimeout(drawSuggestions, 140); }
 
-  function schedulePartners() {
-    clearTimeout(partnerTimer);
-    partnerTimer = setTimeout(refreshPartners, 140);
+  // ---- the window this pair draws -------------------------------------------------------
+  function paintWindow(p) {
+    const frameColor = p["titleBar.activeBackground"];
+    const pane = p["editor.background"];
+    const set = (id, st) => Object.assign($(id).style, st);
+    set("w-bar", { background: frameColor, color: "#cccccc" });
+    set("w-sb", { background: pane });
+    set("w-ed", { background: pane });
+    set("w-sel", { background: p["list.inactiveSelectionBackground"] });
+    set("w-caret", { background: colorOf(p, "editorCursor.foreground") });
+    set("w-selbar", { background: colorOf(p, "editor.selectionBackground") });
+    set("w-btn", { background: colorOf(p, "button.background"), color: colorOf(p, "button.foreground") });
+    set("w-st", { background: frameColor, color: "#cccccc" });
+    const bg = presetOf("background", colors.background);
+    const ac = presetOf("accent", colors.accent);
+    const name = (bg ? bg.name : "Custom")
+      + (!accentSet || colors.accent === impliedAccent() ? "" : " · " + (ac ? ac.name : "Custom"));
+    $("w-title").textContent = name;
+    $("w-sttext").textContent = name;
   }
 
-  // ---- presets and recents ---------------------------------------------------------------
-  const BG_GROUPS = [
-    { label: "Default", of: (p) => p.hex === defaultBackground },
-    { label: "Colors", of: (p) => tint.toOklch(p.hex).C >= 0.045 },
-    { label: "Muted", of: (p) => tint.toOklch(p.hex).C > 0.002 },
-    { label: "Black", of: () => true },
-  ];
-  const AC_GROUPS = ["Saturated", "Dusty", "Light", "Pearl", "Neutral"].map((label) => ({ label }));
-
-  function groupsFor(k) {
-    if (k === "accent") {
-      return AC_GROUPS
-        .map((g) => ({ ...g, items: presets.accent.filter((p) => family(p.hex) === g.label) }))
-        .filter((g) => g.items.length);
+  // ---- shared field painter (half resolution, scaled up) --------------------------------
+  const scratch = document.createElement("canvas");
+  function paintField(canvas, k, hue) {
+    const r = range(k);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(canvas.clientWidth));
+    const ht = Math.max(1, Math.round(canvas.clientHeight));
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(ht * dpr);
+    const sw = Math.max(2, Math.ceil(w / 2)), sh = Math.max(2, Math.ceil(ht / 2));
+    scratch.width = sw; scratch.height = sh;
+    const sg = scratch.getContext("2d");
+    const img = sg.createImageData(sw, sh);
+    const lum = new Float32Array(sw * sh);
+    const [lo, hi] = r.L;
+    for (let y = 0; y < sh; y++) {
+      const l = hi - (y / (sh - 1)) * (hi - lo);
+      let edge = 0, out = r.C;
+      if (tint.rgbIn(l, r.C, hue)) edge = r.C;
+      else for (let i = 0; i < 16; i++) { const m = (edge + out) / 2; if (tint.rgbIn(l, m, hue)) edge = m; else out = m; }
+      for (let x = 0; x < sw; x++) {
+        const rgb = tint.rgbIn(l, (x / (sw - 1)) * edge, hue) || tint.rgbIn(l, edge, hue);
+        if (!rgb) continue;
+        const i = (y * sw + x) * 4;
+        img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2]; img.data[i + 3] = 255;
+        lum[y * sw + x] = luminance(rgb);
+      }
     }
-    const left = presets.background.slice();
-    return BG_GROUPS.map((g) => {
+    sg.putImageData(img, 0, 0);
+    const g = canvas.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, ht);
+    g.drawImage(scratch, 0, 0, w, ht);
+    if (k === "background") { fade(g, lum, sw, sh, w / sw, ht / sh); contrastMark(g, w, ht, k, hue); }
+  }
+  function fade(g, lum, w, ht, sx, sy) {
+    const edgeY = new Float64Array(w);
+    for (let x = 0; x < w; x++) {
+      let y = 0;
+      while (y < ht && lum[y * w + x] > LIMIT) y++;
+      if (y === 0 || y >= ht) { edgeY[x] = y === 0 ? 0 : ht; continue; }
+      const a = lum[(y - 1) * w + x], b = lum[y * w + x];
+      edgeY[x] = y - 1 + clamp(a === b ? 0 : (a - LIMIT) / (a - b), 0, 1);
+    }
+    g.save();
+    g.globalCompositeOperation = "destination-out";
+    g.beginPath();
+    g.moveTo(0, edgeY[0] * sy);
+    for (let x = 0; x < w; x++) g.lineTo((x + 0.5) * sx, edgeY[x] * sy);
+    g.lineTo(w * sx, edgeY[w - 1] * sy);
+    g.lineTo(w * sx, 0);
+    g.lineTo(0, 0);
+    g.closePath();
+    g.fillStyle = "rgba(0,0,0,0.34)";
+    g.fill();
+    g.restore();
+  }
+
+  // The contrast boundary, drawn on the field as a line you can still pick across.
+  function contrastMark(g, w, ht, k, hue) {
+    if (k !== "background") return;
+    const r = range(k);
+    const L = contrastL(hue, r);
+    const y = ((r.L[1] - L) / (r.L[1] - r.L[0])) * ht;
+    g.save();
+    g.setLineDash([5, 4]);
+    g.strokeStyle = "#ffffffcc";
+    g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    g.setLineDash([]);
+    g.font = "10px " + getComputedStyle(document.body).fontFamily;
+    g.fillStyle = "#ffffffdd";
+    g.textAlign = "right";
+    g.fillText("4.5:1 bar text", w - 8, y - 5);
+    g.textAlign = "left";
+    g.restore();
+  }
+
+  // Click or drag anywhere: `move` gets the pointer as a fraction of the element's box, and
+  // `up` fires when the gesture ends, so what the press grabbed can be held until then.
+  function drag(el, move, up) {
+    const at = (e, down) => {
+      const r = el.getBoundingClientRect();
+      move((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, down);
+    };
+    const end = () => { if (up) up(); };
+    el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); el.focus(); at(e, true); });
+    el.addEventListener("pointermove", (e) => { if (el.hasPointerCapture(e.pointerId)) at(e, false); });
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+
+  // =======================================================================================
+  // 05 · Two Rings — background is the outer ring, accent the disc inside it. Lightness rides
+  // two arcs that follow the circle; the two preset lists flank it, so there are no tabs.
+  // =======================================================================================
+  const Rings = {
+    // Everything is derived from one square so the hit test and the drawing cannot drift.
+    geom(size) {
+      const c = size / 2;
+      const R = size * 0.405;
+      const arcW = clamp(size * 0.028, 8, 15);
+      // the handle is a circle on the arc, so the track sits a handle's radius in from the box
+      const hR = arcW / 2 + 3.5;
+      // the gap has to survive the edge feathering at half resolution, or the two bodies merge
+      return { c, R, rIn: R * 0.68, rOut: R, dOut: R * 0.52, Ra: c - hR - 2, arcW, hR };
+    },
+    ARCS: {
+      background: { from: 200, to: 340 },
+      accent: { from: 20, to: 160 },
+    },
+    // The arc track as one rounded capsule, used as a clip so the colour bands keep its ends.
+    // `round` turns either end into a straight radial edge, for a stretch of the track.
+    capsule(g, c, Ra, a0, a1, w, round) {
+      const hw = w / 2;
+      const at = (a, r) => [c + Math.cos(a) * r, c + Math.sin(a) * r];
+      const s0 = at(a0, Ra), s1 = at(a1, Ra);
+      g.beginPath();
+      g.arc(c, c, Ra + hw, a0, a1);
+      if (!round || round[1]) g.arc(s1[0], s1[1], hw, a1, a1 + Math.PI);
+      g.arc(c, c, Ra - hw, a1, a0, true);
+      if (!round || round[0]) g.arc(s0[0], s0[1], hw, a0 + Math.PI, a0 + Math.PI * 2);
+      g.closePath();
+    },
+    // A label's type and its soft drop shadow, shared by the flat and the curved ones.
+    label(g, px, color, alpha) {
+      g.font = "600 " + px.toFixed(1) + "px " + getComputedStyle(document.body).fontFamily;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.globalAlpha = alpha === undefined ? 1 : alpha;
+      g.fillStyle = color;
+      g.shadowColor = "#000000b0";
+      g.shadowBlur = px * 0.85;
+      g.shadowOffsetY = px * 0.12;
+    },
+    // Text following the circle, centred on `deg`. `o.inward` points the letters' tops at the
+    // centre, for the lower half; `o.max` is the arc length it has to fit in.
+    curveText(g, c, R, deg, text, o) {
+      const chars = Array.from(text);
+      g.save();
+      this.label(g, o.px, o.color, o.alpha);
+      const sp = o.px * 0.16;
+      const w = chars.map((ch) => g.measureText(ch).width);
+      const total = w.reduce((a, b) => a + b, 0) + sp * (chars.length - 1);
+      if (o.max && total > o.max) { g.restore(); return; }
+      const dir = o.inward ? -1 : 1;
+      let a = (deg - 90) * Math.PI / 180 - (dir * total) / (2 * R);
+      for (let i = 0; i < chars.length; i++) {
+        a += (dir * w[i]) / (2 * R);
+        g.save();
+        g.translate(c + Math.cos(a) * R, c + Math.sin(a) * R);
+        g.rotate(a + (dir * Math.PI) / 2);
+        g.fillText(chars[i], 0, 0);
+        g.restore();
+        a += (dir * (w[i] / 2 + sp)) / R;
+      }
+      g.restore();
+    },
+    // The track, drawn exactly across the arc.
+    span(k) {
+      const a = this.ARCS[k];
+      return [a.from, a.to > a.from ? a.to : a.to + 360];
+    },
+    // The handle's travel: inset at both ends by how far it overhangs the track, so at the
+    // limits it sits flush inside the rounded end instead of pushing the track outward.
+    hspan(k) {
+      const [from, to] = this.span(k), g = this.geom(this.lastSize);
+      const ins = ((g.hR - g.arcW / 2) / g.Ra) * 180 / Math.PI;
+      return [from + ins, to - ins];
+    },
+    arcL(k, deg) {
+      const [from, to] = this.hspan(k), r = range(k);
+      const t = clamp((deg - from) / (to - from), 0, 1);
+      return r.L[1] - t * (r.L[1] - r.L[0]);
+    },
+    // An angle outside the arc sticks to whichever end is nearer round the circle, so dragging
+    // past the top of a slider holds it at the top instead of flipping to the bottom.
+    clampArcDeg(k, deg) {
+      const [from, to] = this.hspan(k);
+      const d = (((deg - from) % 360) + 360) % 360;
+      if (d <= to - from) return from + d;
+      return d - (to - from) < 360 - d ? to : from;
+    },
+    arcPoint(k, L) {
+      const [from, to] = this.hspan(k), r = range(k);
+      const t = (r.L[1] - L) / (r.L[1] - r.L[0]);
+      return (from + t * (to - from) - 90) * Math.PI / 180;
+    },
+    inArc(k, deg, pad) {
+      const [from, to] = this.span(k);
+      let d = deg;
+      if (d < from - pad) d += 360;
+      return d >= from - pad && d <= to + pad;
+    },
+
+    showPresets: true,
+    dots: [],
+    lastSize: 320,
+    // what the press grabbed: the whole drag stays on it, so a slipping cursor can't switch knob
+    held: null,
+    // which body the pointer is over, so that one's label can step aside, and how far each
+    // label has faded towards that (1 = fully shown)
+    hover: null,
+    fade: { background: 1, accent: 1 },
+    anim: null,
+
+    // Which body a point in the element's box falls on, in units of the half-size.
+    bodyAt(rad) {
+      const u = this.geom(this.lastSize), c = u.c;
+      if (rad <= u.dOut / c) return "accent";
+      return rad >= u.rIn / c && rad <= u.rOut / c ? "background" : null;
+    },
+    setHover(h) {
+      if (h === this.hover) return;
+      this.hover = h;
+      this.animate();
+    },
+    // Ease both labels towards their targets, framerate-independent, until they settle.
+    animate() {
+      if (this.anim) return;
+      let last = performance.now();
+      const tick = (now) => {
+        const dt = Math.min(64, now - last);
+        last = now;
+        let moving = false;
+        for (const k of ["background", "accent"]) {
+          const to = this.hover === k ? 0 : 1, d = to - this.fade[k];
+          if (Math.abs(d) < 0.005) { this.fade[k] = to; continue; }
+          this.fade[k] += d * (1 - Math.exp(-dt / 90));
+          moving = true;
+        }
+        this.draw();
+        this.anim = moving ? requestAnimationFrame(tick) : null;
+      };
+      this.anim = requestAnimationFrame(tick);
+    },
+
+    build() {
+      $("presets").hidden = true;
+      $("surface").innerHTML =
+        '<div class="hit" id="r-disc" tabindex="0" style="width:100%;max-width:680px;margin:0 auto;aspect-ratio:1/1">'
+        + '<canvas style="width:100%;height:100%"></canvas></div>';
+      const t = $("r-toggle");
+      t.setAttribute("aria-checked", String(this.showPresets));
+      t.addEventListener("click", () => {
+        this.showPresets = !this.showPresets;
+        t.setAttribute("aria-checked", String(this.showPresets));
+        render();
+      });
+      drag($("r-disc"), (x, y, down) => {
+        const dx = x - 0.5, dy = y - 0.5;
+        const rad = Math.hypot(dx, dy) * 2;
+        const deg = (Math.atan2(dy, dx) * 180 / Math.PI + 450) % 360;
+        const u = this.geom(this.lastSize), c = u.c;
+        const RING_OUT = u.rOut / c, RING_IN = u.rIn / c, DISC_OUT = u.dOut / c;
+        const ARC_IN = (RING_OUT + (u.Ra - u.hR) / c) / 2;
+        const padDeg = (u.hR / u.Ra) * 180 / Math.PI;
+        if (down) {
+          this.held = null;
+          // a tap on a preset dot takes that preset exactly
+          if (this.showPresets) {
+            const px = x * this.lastSize, py = y * this.lastSize;
+            let best = null;
+            for (const d of this.dots) {
+              const dist = Math.hypot(d.x - px, d.y - py);
+              if (dist <= u.hR && (!best || dist < best.dist)) best = { d, dist };
+            }
+            if (best) {
+              if (best.d.k !== knob) showKnob(best.d.k);
+              pick(best.d.hex);
+              return;
+            }
+          }
+          if (rad > ARC_IN) {
+            for (const k of ["background", "accent"]) {
+              if (this.inArc(k, deg, padDeg)) { this.held = { arc: true, k }; break; }
+            }
+          } else {
+            this.held = { arc: false, k: rad > (RING_IN + DISC_OUT) / 2 ? "background" : "accent" };
+          }
+        }
+        const h = this.held;
+        if (!h) return;
+        this.setHover(h.arc ? null : h.k);
+        if (h.k !== knob) showKnob(h.k);
+        if (h.arc) {
+          coord[h.k].L = this.arcL(h.k, this.clampArcDeg(h.k, deg));
+          commit(h.k);
+          return;
+        }
+        const cc = coord[h.k];
+        cc.h = deg;
+        const frac = h.k === "background"
+          ? clamp((rad - RING_IN) / (RING_OUT - RING_IN), 0, 1)
+          : clamp(rad / DISC_OUT, 0, 1);
+        cc.C = frac * edgeC(cc.L, deg, range(h.k).C);
+        commit(h.k);
+      }, () => { this.held = null; });
+      const host = $("r-disc");
+      host.addEventListener("pointermove", (e) => {
+        if (host.hasPointerCapture(e.pointerId)) return;
+        const b = host.getBoundingClientRect();
+        const rad = Math.hypot((e.clientX - b.left) / b.width - 0.5, (e.clientY - b.top) / b.height - 0.5) * 2;
+        this.setHover(this.bodyAt(rad));
+      });
+      host.addEventListener("pointerleave", () => this.setHover(null));
+      host.addEventListener("keydown", (e) => nudgeField(e));
+    },
+
+    // The disc is generated per pixel, so it is cached and only rebuilt when a lightness moves.
+    cache: null,
+    pending: null,
+    disc(size, dpr, full) {
+      const key = size + ":" + full + ":" + coord.background.L.toFixed(3) + ":" + coord.accent.L.toFixed(3);
+      if (this.cache && this.cache.key === key) return this.cache.cv;
+      const g0 = this.geom(size);
+      const n = full ? Math.round(size * dpr) : Math.max(120, Math.round(size / 2));
+      const k = n / size;
+      const cv = document.createElement("canvas");
+      cv.width = n; cv.height = n;
+      const ctx = cv.getContext("2d");
+      const img = ctx.createImageData(n, n);
+      const edges = {};
+      ["background", "accent"].forEach((kk) => {
+        const e = new Float64Array(361);
+        for (let d = 0; d <= 360; d++) e[d] = edgeC(coord[kk].L, d % 360, range(kk).C);
+        edges[kk] = e;
+      });
+      const c = n / 2;
+      const rIn = g0.rIn * k, rOut = g0.rOut * k, dOut = g0.dOut * k;
+      const aa = 1.2;
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          const dx = x + 0.5 - c, dy = y + 0.5 - c;
+          const r = Math.hypot(dx, dy);
+          let kk = null, frac = 0, alpha = 1;
+          if (r <= dOut + aa) {
+            kk = "accent"; frac = Math.min(1, r / dOut);
+            if (r > dOut) alpha = 1 - (r - dOut) / aa;
+          } else if (r >= rIn - aa && r <= rOut + aa) {
+            kk = "background"; frac = clamp((r - rIn) / (rOut - rIn), 0, 1);
+            if (r < rIn) alpha = 1 - (rIn - r) / aa;
+            if (r > rOut) alpha = 1 - (r - rOut) / aa;
+          }
+          if (!kk || alpha <= 0) continue;
+          const deg = (Math.atan2(dy, dx) * 180 / Math.PI + 450) % 360;
+          const d0 = Math.floor(deg), t = deg - d0;
+          const e = edges[kk][d0] * (1 - t) + edges[kk][(d0 + 1) % 360] * t;
+          const C = frac * e * 0.998;
+          const rgb = tint.rgbIn(coord[kk].L, C, deg) || tint.rgbIn(coord[kk].L, C * 0.94, deg);
+          if (!rgb) continue;
+          const i = (y * n + x) * 4;
+          img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2];
+          img.data[i + 3] = Math.round(255 * alpha);
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      this.cache = { key, cv };
+      return cv;
+    },
+
+    draw() {
+      const host = $("r-disc");
+      const size = Math.max(160, Math.round(host.clientWidth));
+      const cv = host.querySelector("canvas");
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = Math.round(size * dpr); cv.height = Math.round(size * dpr);
+      const g = cv.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, size, size);
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = "high";
+      const have = this.cache && this.cache.key.indexOf(size + ":true:") === 0;
+      g.drawImage(this.disc(size, dpr, have), 0, 0, size, size);
+      // once the pointer settles, redraw it once at device resolution — only while still coarse
+      if (!have) {
+        clearTimeout(this.pending);
+        this.pending = setTimeout(() => { this.disc(size, dpr, true); render(); }, 170);
+      }
+
+      const geo = this.geom(size), c = geo.c;
+      const ang = (h) => (h - 90) * Math.PI / 180;
+      const pos = (o, outer) => {
+        const k = outer ? "background" : "accent";
+        const e = edgeC(coord[k].L, o.h, range(k).C) || range(k).C;
+        const frac = clamp(o.C / e, 0, 1);
+        const r = outer ? geo.rIn + frac * (geo.rOut - geo.rIn) : frac * geo.dOut;
+        const a = ang(o.h);
+        return [c + Math.cos(a) * r, c + Math.sin(a) * r];
+      };
+      this.lastSize = size;
+
+      // Each body says what it is, and fades out of the way once the pointer is on it.
+      const lab = clamp(size * 0.019, 9, 13);
+      const labCol = "#ffffffd4";
+      if (this.fade.background > 0.01) {
+        this.curveText(g, c, (geo.rIn + geo.rOut) / 2, 180, "BACKGROUND",
+          { px: lab, color: labCol, inward: true, alpha: this.fade.background });
+      }
+      if (this.fade.accent > 0.01) {
+        g.save();
+        this.label(g, lab, labCol, this.fade.accent);
+        g.fillText("ACCENT", c, c);
+        g.restore();
+      }
+
+      this.dots = [];
+      if (this.showPresets) {
+        [["background", true], ["accent", false]].forEach(([k, outer]) => {
+          presets[k].forEach((p) => {
+            const o = tint.toOklch(p.hex);
+            if (isNeutral(p.hex)) return;
+            const q = pos(o, outer);
+            const on = p.hex === colors[k];
+            const dR = clamp(size * 0.0105, 4.5, 7);
+            g.beginPath(); g.arc(q[0], q[1], on ? dR + 1 : dR, 0, 6.3);
+            g.fillStyle = p.hex; g.fill();
+            g.lineWidth = on ? 2 : 1;
+            g.strokeStyle = on ? "#ffffffcc" : "#00000088";
+            g.stroke();
+            this.dots.push({ x: q[0], y: q[1], hex: p.hex, k });
+          });
+        });
+      }
+
+      // lightness arcs, following the circle instead of standing beside it. The capsule clips
+      // the track to fully round ends; the bands are stroked past it so those ends get colour.
+      const capDeg = (geo.arcW / 2 / geo.Ra) * 180 / Math.PI + 1;
+      ["background", "accent"].forEach((k) => {
+        const r = range(k);
+        const [d0, d1] = this.span(k), [h0, h1] = this.hspan(k);
+        g.save();
+        this.capsule(g, c, geo.Ra, ang(d0), ang(d1), geo.arcW);
+        g.clip();
+        g.lineWidth = geo.arcW;
+        g.lineCap = "butt";
+        for (let d = d0 - capDeg; d < d1 + capDeg; d += 1.5) {
+          const t = clamp((d - h0) / (h1 - h0), 0, 1);
+          g.beginPath();
+          g.arc(c, c, geo.Ra, ang(d) - 0.02, ang(d + 1.5) + 0.02);
+          g.strokeStyle = tint.fromOklch(r.L[1] - t * (r.L[1] - r.L[0]), coord[k].C, coord[k].h);
+          g.stroke();
+        }
+        g.restore();
+        // Lighter than this and `#cccccc` bar text drops under 4.5:1 on the frame: the whole
+        // stretch is washed red, cut off by a line across the track and labelled under the curve.
+        if (k === "background") {
+          const tc = clamp((r.L[1] - contrastL(coord[k].h, r)) / (r.L[1] - r.L[0]), 0, 1);
+          const cDeg = h0 + tc * (h1 - h0);
+          const am = ang(cDeg), hw = geo.arcW / 2;
+          this.capsule(g, c, geo.Ra, ang(d0), am, geo.arcW, [true, false]);
+          g.fillStyle = "#ff4f4f30";
+          g.fill();
+          g.lineWidth = 1.5;
+          g.strokeStyle = "#ffa0a0e0";
+          g.beginPath();
+          g.moveTo(c + Math.cos(am) * (geo.Ra - hw - 2), c + Math.sin(am) * (geo.Ra - hw - 2));
+          g.lineTo(c + Math.cos(am) * (geo.Ra + hw + 2), c + Math.sin(am) * (geo.Ra + hw + 2));
+          g.stroke();
+          const tp = clamp(size * 0.0165, 8.5, 11.5), tr = geo.Ra - hw - tp * 0.95;
+          this.curveText(g, c, tr, (d0 + cDeg) / 2, "low contrast",
+            { px: tp, color: "#ffb4b4", inward: true, max: ((cDeg - d0) * Math.PI / 180) * tr - tp });
+        }
+        const ha = this.arcPoint(k, coord[k].L);
+        const hp = [c + Math.cos(ha) * geo.Ra, c + Math.sin(ha) * geo.Ra];
+        g.beginPath(); g.arc(hp[0], hp[1], geo.hR, 0, 6.3);
+        g.fillStyle = tint.fromOklch(coord[k].L, coord[k].C, coord[k].h);
+        g.fill();
+        g.lineWidth = knob === k ? 3 : 2;
+        g.strokeStyle = "#fff";
+        g.stroke();
+      });
+
+      const bp = pos(coord.background, true), ap = pos(coord.accent, false);
+      [[bp, colors.background, knob === "background"], [ap, colors.accent, knob === "accent"]].forEach((q) => {
+        g.beginPath(); g.arc(q[0][0], q[0][1], q[2] ? geo.hR : geo.hR - 2, 0, 6.3);
+        g.fillStyle = q[1]; g.fill();
+        g.lineWidth = q[2] ? 3 : 2; g.strokeStyle = "#fff"; g.stroke();
+      });
+    },
+    knobChanged() {},
+  };
+
+  const surface = () => Rings;
+
+  function nudgeField(e) {
+    const step = e.shiftKey ? 5 : 1;
+    const r = range(), c = coord[knob];
+    const dl = { ArrowUp: 1, ArrowDown: -1 }[e.key], dc = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!dl && !dc) return;
+    e.preventDefault();
+    if (dl) c.L = clamp(c.L + (dl * step * (r.L[1] - r.L[0])) / 60, r.L[0], r.L[1]);
+    if (dc) c.C = clamp(c.C + (dc * step * r.C) / 60, 0, r.C);
+    commit(knob);
+  }
+
+  function pick(hex) {
+    if (knob === "accent") accentSet = true;
+    setColor(knob, hex);
+    syncAccent();
+    render();
+    scheduleSug();
+  }
+
+  function drawPresets() {
+    const groups = knob === "background"
+      ? [["Default", (p) => p.hex === defaultBackground], ["Colors", (p) => tint.toOklch(p.hex).C >= 0.045],
+         ["Muted", (p) => tint.toOklch(p.hex).C > 0.002], ["Black", () => true]]
+      : ["Saturated", "Dusty", "Light", "Pearl", "Neutral"].map((f) => [f, (p) => family(p.hex) === f]);
+    const left = presets[knob].slice();
+    const rows = groups.map(([label, test]) => {
       const items = [];
-      for (let i = left.length - 1; i >= 0; i--) if (g.of(left[i])) items.unshift(left.splice(i, 1)[0]);
-      return { ...g, items };
+      for (let i = left.length - 1; i >= 0; i--) if (test(left[i])) items.unshift(left.splice(i, 1)[0]);
+      return { label, items };
     }).filter((g) => g.items.length);
-  }
-
-  function swatchButton(p) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = p.name ? p.name + " " + p.hex : p.hex;
-    b.dataset.hex = p.hex;
-    b.style.background = p.hex;
-    b.addEventListener("click", () => {
-      if (knob === "accent") accentSet = true;
-      setColor(knob, p.hex);
-      syncAccent();
-      render();
-      schedulePartners();
-    });
-    return b;
-  }
-
-  function buildPresets() {
-    $("groups").replaceChildren(...groupsFor(knob).map((g) => {
-      const box = document.createElement("div");
-      box.className = "line";
-      const label = document.createElement("span");
-      label.className = "tag";
-      label.textContent = g.label;
+    $("presets").replaceChildren(...rows.map((g) => {
       const row = document.createElement("div");
-      row.className = "items sw";
-      row.append(...g.items.map(swatchButton));
-      box.append(label, row);
-      return box;
+      row.style.cssText = "display:flex;gap:10px;align-items:flex-start;margin-bottom:8px";
+      const lab = document.createElement("span");
+      lab.className = "lab";
+      lab.style.cssText = "flex:0 0 62px;text-align:right;padding-top:4px";
+      lab.textContent = g.label;
+      const sw = document.createElement("div");
+      sw.className = "row sw";
+      sw.style.flex = "1";
+      sw.append(...g.items.map((p) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.title = p.name + " " + p.hex;
+        b.dataset.hex = p.hex;
+        b.style.background = p.hex;
+        b.addEventListener("click", () => pick(p.hex));
+        return b;
+      }));
+      row.append(lab, sw);
+      return row;
     }));
     const list = recents[knob] || [];
-    $("recents-box").hidden = !list.length;
-    $("recents").replaceChildren(...list.map((hex) => swatchButton({ hex, name: presetOf(knob, hex)?.name })));
+    $("rec-box").hidden = !list.length;
+    $("rec").replaceChildren(...list.map((hex) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.hex = hex;
+      b.style.background = hex;
+      b.addEventListener("click", () => pick(hex));
+      return b;
+    }));
   }
 
-  // ---- render ----------------------------------------------------------------------------
   function render() {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = null;
-      const c = coord[knob], r = range();
-      if (drawnHue !== c.h || drawnKnob !== knob) drawField();
-      const [lo, hi] = r.L;
-      const clamp = (v) => Math.min(1, Math.max(0, v));
-      const hex = colors[knob];
-      $("dot").style.left = clamp(c.C / r.C) * 100 + "%";
-      $("dot").style.top = clamp((hi - c.L) / (hi - lo)) * 100 + "%";
-      $("knob").style.top = (c.h / 360) * 100 + "%";
-      $("swatch").style.background = hex;
-      $("chip-background").style.background = colors.background;
-      $("chip-accent").style.background = colors.accent;
-      if (document.activeElement !== hexBox) hexBox.value = hex;
-      hexBox.classList.remove("invalid");
-      $("coords").textContent = "L " + c.L.toFixed(2) + " · C " + c.C.toFixed(3) + " · H " + Math.round(c.h) + "°";
-      const preset = presetOf(knob, hex);
-      $("name").textContent = preset ? preset.name : "Custom";
-      document.querySelectorAll(".sw button").forEach((b) => b.classList.toggle("on", b.dataset.hex === hex));
-
+      surface().draw();
+      if (document.activeElement !== $("hex")) $("hex").value = colors[knob];
+      document.querySelectorAll(".sw button").forEach((b) => b.classList.toggle("on", b.dataset.hex === colors[knob]));
       paintWindow(palette());
-      const faded = knob === "background" && ratio(colors.background, "#cccccc") < 4.5;
-      $("fade-note").textContent = knob !== "background" ? ""
-        : faded ? "This one is in the faded band, where the bar text gets hard to read."
-        : "Colors in the faded band make the bar text harder to read.";
-      $("fade-note").classList.toggle("warn", faded);
-
-      const signature = colors.background + (accentSet ? colors.accent : "");
-      if (signature !== sent) {
-        sent = signature;
+      const sig = colors.background + (accentSet ? colors.accent : "");
+      if (sig !== sent) {
+        sent = sig;
         vscode.postMessage({ type: "preview", background: colors.background, accent: accentSet ? colors.accent : null });
       }
     });
   }
 
-  // ---- input -----------------------------------------------------------------------------
-  // Click or drag: `move` maps the pointer to the color, as a fraction of the element's box.
-  function drag(el, move) {
-    const at = (e) => {
-      const r = el.getBoundingClientRect();
-      move(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
-      fromField();
-      render();
-      schedulePartners();
-    };
-    el.addEventListener("pointerdown", (e) => {
-      el.setPointerCapture(e.pointerId);
-      el.focus();
-      at(e);
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (el.hasPointerCapture(e.pointerId)) at(e);
-    });
-  }
-
-  drag(field, (x, y) => {
-    const r = range();
-    coord[knob].C = x * r.C;
-    coord[knob].L = r.L[1] - y * (r.L[1] - r.L[0]);
-  });
-  drag(hueBar, (_x, y) => { coord[knob].h = Math.min(359.9, y * 360); });
-
-  // Arrows nudge the color; Shift takes bigger steps.
-  function nudge(e, change) {
-    const step = e.shiftKey ? 5 : 1;
-    if (!change(step)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    fromField();
-    render();
-    schedulePartners();
-  }
-  field.addEventListener("keydown", (e) => nudge(e, (step) => {
-    const r = range(), c = coord[knob];
-    const [lo, hi] = r.L;
-    const dl = { ArrowUp: 1, ArrowDown: -1 }[e.key], dc = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-    if (dl) c.L = Math.min(hi, Math.max(lo, c.L + (dl * step * (hi - lo)) / 60));
-    if (dc) c.C = Math.min(r.C, Math.max(0, c.C + (dc * step * r.C) / 60));
-    return dl || dc;
-  }));
-  hueBar.addEventListener("keydown", (e) => nudge(e, (step) => {
-    const d = { ArrowDown: 1, ArrowUp: -1 }[e.key];
-    if (d) coord[knob].h = (coord[knob].h + d * step * 2 + 360) % 360;
-    return d;
-  }));
-
-  hexBox.addEventListener("input", () => {
-    // Six digits only, so typing #1f4a33 doesn't preview #11ff44 on the way.
-    const value = /^#?[0-9a-f]{6}$/i.test(hexBox.value.trim()) && tint.normalizeHex(hexBox.value);
-    hexBox.classList.toggle("invalid", !value && hexBox.value.trim().replace(/^#/, "").length >= 6);
-    if (!value) return;
-    if (knob === "accent") accentSet = true;
-    setColor(knob, value);
-    syncAccent();
-    render();
-    schedulePartners();
-  });
-  hexBox.addEventListener("blur", () => { hexBox.value = colors[knob]; hexBox.classList.remove("invalid"); });
-
   function showKnob(next) {
     knob = next;
-    $("tab-background").setAttribute("aria-selected", String(next === "background"));
-    $("tab-accent").setAttribute("aria-selected", String(next === "accent"));
-    field.setAttribute("aria-label", (next === "background" ? "Background" : "Accent") + " lightness and colorfulness");
-    drawHue();
-    buildPresets();
+    surface().knobChanged();
+    drawPresets();
     render();
-    refreshPartners();
+    drawSuggestions();
   }
-  $("tab-background").addEventListener("click", () => showKnob("background"));
-  $("tab-accent").addEventListener("click", () => showKnob("accent"));
 
-  const apply = () => vscode.postMessage({
-    type: "apply",
-    background: colors.background,
-    accent: accentSet ? colors.accent : null,
+  $("hex").addEventListener("input", () => {
+    const v = /^#?[0-9a-f]{6}$/i.test($("hex").value.trim()) && tint.normalizeHex($("hex").value);
+    if (!v) return;
+    pick(v);
   });
+  $("hex").addEventListener("blur", () => { $("hex").value = colors[knob]; });
+
+  const apply = () => vscode.postMessage({ type: "apply", background: colors.background, accent: accentSet ? colors.accent : null });
   const cancel = () => vscode.postMessage({ type: "cancel" });
   $("apply").addEventListener("click", apply);
   $("cancel").addEventListener("click", cancel);
@@ -483,12 +763,7 @@
     if (e.key === "Enter" && e.target.tagName !== "BUTTON") apply();
   });
 
-  new ResizeObserver(() => {
-    if (!presets.background.length) return;
-    drawHue();
-    drawField();
-    render();
-  }).observe(field);
+  new ResizeObserver(() => { if (presets.background.length) render(); }).observe(document.getElementById("surface"));
 
   window.addEventListener("message", ({ data }) => {
     if (data.type !== "init") return;
@@ -500,8 +775,8 @@
     setColor("background", data.background);
     setColor("accent", data.accent || impliedAccent());
     sent = colors.background + (accentSet ? colors.accent : "");
+    surface().build();
     showKnob(data.knob);
-    field.focus();
   });
   vscode.postMessage({ type: "ready" });
 })();

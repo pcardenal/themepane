@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{csp}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
 <style>
-  :root { color-scheme: dark; --gap: 20px; --edge: 1px solid var(--vscode-widget-border, #ffffff1a); }
+  :root { color-scheme: dark; --edge: 1px solid var(--vscode-widget-border, #ffffff1a); }
   body {
     margin: 0;
     background: var(--vscode-editor-background);
@@ -13,70 +13,82 @@
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
   }
-  main {
-    max-width: 860px; margin: 0 auto; padding: 24px 20px 92px;
-    display: flex; flex-direction: column; gap: var(--gap);
-  }
-  h1 { font-size: 1.4em; font-weight: 600; margin: 0; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+  h1 { font-size: 1.3em; font-weight: 600; margin: 0; }
   .muted { color: var(--vscode-descriptionForeground); }
-  .muted.warn { color: var(--vscode-editorWarning-foreground); }
+  .mono { font-family: var(--vscode-editor-font-family, monospace); font-variant-numeric: tabular-nums; }
 
-  /* The window this pair draws, from colorsFor(): the panel's own header. */
-  .win { border-radius: 8px; overflow: hidden; font-size: 11px; line-height: 1; }
-  .win-bar { height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
-  .win-bar .dots { display: flex; gap: 4px; }
-  .win-bar .dots i { width: 7px; height: 7px; border-radius: 50%; background: #ffffff26; }
-  .win-tabs { height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 7px; }
-  .win-tabs .t { padding: 3px 10px; border-radius: 5px; font-size: 10px; }
-  .win-body { display: flex; height: 104px; }
-  .win-side { flex: none; width: 92px; padding: 10px 8px; display: flex; flex-direction: column; gap: 7px; }
-  .win-side .r { height: 6px; border-radius: 3px; background: #ffffff1f; }
-  .win-side .r.sel { height: 15px; margin: -4px -8px; border-radius: 0; }
-  .win-edit { flex: 1; min-width: 0; padding: 11px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .win-edit .l { height: 6px; border-radius: 3px; background: #ffffff1c; }
-  .win-caretline { display: flex; align-items: center; height: 10px; }
-  .win-caretline .l { flex: 0 0 48%; }
-  .win-caret { width: 2px; height: 11px; margin-left: 3px; }
-  .win-sel { height: 10px; width: 56%; border-radius: 2px; }
-  .win-btn { align-self: flex-start; margin-top: auto; font-size: 10px; padding: 4px 12px; border-radius: 4px; }
-  .win-status { height: 20px; display: flex; align-items: center; padding: 0 10px; font-size: 10px; }
 
-  /* Which of the pair is being edited. */
-  .knobs { display: flex; gap: 6px; }
-  .knobs button {
-    display: flex; align-items: center; gap: 9px; padding: 7px 15px 7px 9px;
-    border: var(--edge); border-radius: 7px; background: none;
-    color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer;
+  .work { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
+  #surface { flex: 1 1 540px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+  canvas { display: block; touch-action: none; }
+  .hit { position: relative; outline: none; cursor: crosshair; }
+  .hit:focus-visible { box-shadow: 0 0 0 2px var(--vscode-focusBorder); }
+  .dot {
+    position: absolute; pointer-events: none; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 0 0 1px #000a, 0 1px 4px #0008; transform: translate(-50%, -50%);
   }
-  .knobs button .chip { width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1px #ffffff26; }
-  .knobs button:hover { color: var(--vscode-foreground); }
-  .knobs button[aria-selected="true"] {
-    color: var(--vscode-foreground); border-color: var(--vscode-focusBorder);
-    background: var(--vscode-list-inactiveSelectionBackground);
-  }
-  .knobs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
-  /* Field, hue rail, and everything that reads out of them. */
-  .picker { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: flex-start; }
-  .plane { flex: 1 1 320px; min-width: 0; display: flex; gap: 12px; }
-  .field, .hue { position: relative; touch-action: none; cursor: crosshair; outline: none; }
-  .field { flex: 1; min-width: 0; height: 236px; border-radius: 8px; }
-  .hue { flex: none; width: 18px; height: 236px; border-radius: 9px; cursor: ns-resize; }
-  canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
-  .field:focus-visible, .hue:focus-visible { box-shadow: 0 0 0 2px var(--vscode-focusBorder); }
-  .ticks { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; overflow: hidden; }
-  .ticks i { position: absolute; right: 0; width: 5px; height: 1px; background: #ffffff8c; }
-  .dot, .knob {
-    position: absolute; pointer-events: none;
-    border: 2px solid #ffffff; box-shadow: 0 0 0 1px #000000a0, 0 1px 4px #00000080;
-  }
-  .dot { width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%); }
-  .knob { left: -3px; height: 8px; width: 24px; border-radius: 5px; transform: translateY(-50%); }
+  /* atlas */
+  .lanes { display: flex; gap: 8px; }
+  .cap { flex: 0 0 46px; display: flex; flex-direction: column; gap: 4px; }
+  .cap button { flex: 1; border: 0; border-radius: 5px; cursor: pointer; box-shadow: inset 0 0 0 1px #ffffff26; padding: 0; }
+  .lane { position: relative; border-radius: 5px; overflow: hidden; cursor: ew-resize; }
+  .lane .chipp { position: absolute; top: 3px; bottom: 3px; width: 13px; margin-left: -6px; border-radius: 3px; box-shadow: 0 0 0 1px #00000077; cursor: pointer; }
+  .lane .chipp.on { box-shadow: 0 0 0 2px #fff; }
+  .play { position: absolute; top: -2px; width: 1px; background: #fff; pointer-events: none; }
+  .axis { display: flex; justify-content: space-between; font-size: .75em; color: var(--vscode-descriptionForeground); }
 
-  .readout { flex: 1 1 230px; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
-  .colour { display: flex; align-items: center; gap: 12px; }
-  .swatch { flex: none; width: 44px; height: 44px; border-radius: 8px; box-shadow: inset 0 0 0 1px #ffffff26; }
-  .value { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  /* window preview */
+  .win { border-radius: 7px; overflow: hidden; font-size: 11px; line-height: 1; }
+  .win .bar { height: 22px; display: flex; align-items: center; padding: 0 9px; }
+  .win .body { display: flex; height: 124px; }
+  .win .sb { flex: 0 0 62px; padding: 10px 6px; display: flex; flex-direction: column; gap: 8px; }
+  .win .sb i, .win .ed i { display: block; height: 5px; border-radius: 2px; background: #ffffff1f; }
+  .win .ed { flex: 1; min-width: 0; padding: 11px 11px; display: flex; flex-direction: column; gap: 9px; }
+  .win .ed i { background: #ffffff1c; }
+  .win .caretline { display: flex; align-items: center; gap: 3px; }
+  .win .caretline i { flex: 0 0 44%; }
+  .win .caret { width: 2px; height: 11px; }
+  .win .btn { align-self: flex-start; margin-top: auto; font-size: 9px; padding: 3px 10px; border-radius: 3px; }
+  .win .st { height: 17px; display: flex; align-items: center; padding: 0 9px; font-size: 9px; }
+
+  .lab { font-size: .95em; color: var(--vscode-foreground); }
+  .row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .sug {
+    display: flex; align-items: center; gap: 8px; padding: 5px 13px 5px 6px; cursor: pointer;
+    border: var(--edge); border-radius: 999px; background: none; color: var(--vscode-foreground); font: inherit;
+  }
+  .sug:hover { background: var(--vscode-list-hoverBackground); }
+  .sug i { width: 15px; height: 15px; border-radius: 50%; box-shadow: inset 0 0 0 1px #ffffff26; }
+  .sw button {
+    width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
+    box-shadow: inset 0 0 0 1px #ffffff26;
+  }
+  .sw button.on { outline: 2px solid var(--vscode-foreground); outline-offset: 2px; }
+
+  .switchrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; }
+  .switch {
+    box-sizing: border-box; position: relative; flex: none; width: 34px; height: 18px; padding: 0;
+    border: var(--edge); border-radius: 999px; cursor: pointer;
+    background: var(--vscode-input-background, #ffffff12); transition: background .13s;
+  }
+  .switch i {
+    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--vscode-descriptionForeground); transition: transform .13s, background .13s;
+  }
+  .switch[aria-checked="true"] { background: var(--vscode-button-background); border-color: transparent; }
+  .switch[aria-checked="true"] i { transform: translateX(16px); background: var(--vscode-button-foreground); }
+  .switch:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+
+  .ctl {
+    margin-top: auto; padding-top: 14px; border-top: var(--edge);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ctl .acts { margin-left: auto; display: flex; gap: 7px; }
   input {
     width: 9ch; padding: 4px 6px; border-radius: 4px;
     font-family: var(--vscode-editor-font-family, monospace); font-size: 1.05em;
@@ -84,117 +96,60 @@
     border: 1px solid var(--vscode-input-border, transparent);
   }
   input:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-  input.invalid { outline: 1px solid var(--vscode-inputValidation-errorBorder); outline-offset: -1px; }
-  .coords {
-    font-family: var(--vscode-editor-font-family, monospace); font-size: .85em;
-    color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums;
+  .ctl button {
+    padding: 4px 13px; border: 0; border-radius: 4px; cursor: pointer;
+    font: inherit; font-size: .9em;
+    background: var(--vscode-button-background); color: var(--vscode-button-foreground);
   }
-  .name { font-weight: 600; }
-
-  /* Small labelled rows: partners, recent, and each preset group. */
-  .line { display: flex; gap: 12px; align-items: baseline; min-width: 0; }
-  .line > .tag {
-    flex: 0 0 62px; text-align: right; font-size: .8em;
-    color: var(--vscode-descriptionForeground);
-  }
-  .line > .items { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 7px; }
-  .partner {
-    display: flex; align-items: center; gap: 7px; padding: 4px 11px 4px 6px; cursor: pointer;
-    border: var(--edge); border-radius: 999px; background: none;
-    color: var(--vscode-foreground); font: inherit; font-size: .9em;
-  }
-  .partner:hover { background: var(--vscode-list-hoverBackground); }
-  .partner i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px #ffffff26; }
-  .partner:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-
-  .presets { display: flex; flex-direction: column; gap: 12px; }
-  .sw button {
-    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
-    box-shadow: inset 0 0 0 1px #ffffff26;
-  }
-  .sw button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
-  .sw button.on { outline: 2px solid var(--vscode-foreground); outline-offset: 2px; }
-
-  footer {
-    position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px;
-    margin: 6px -20px -92px; padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
-    background: var(--vscode-editor-background); border-top: var(--edge);
-  }
-  footer button {
-    padding: 6px 17px; border: 0; border-radius: 4px; cursor: pointer;
-    font: inherit; background: var(--vscode-button-background); color: var(--vscode-button-foreground);
-  }
-  footer button:hover { background: var(--vscode-button-hoverBackground); }
-  footer button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-  footer button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-  footer button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+  .ctl button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+  .ctl button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
-  <h1 id="title">Custom colors</h1>
+  <h1 id="title"></h1>
 
-  <div class="win" id="win">
-    <div class="win-bar" id="w-bar"><span class="dots"><i></i><i></i><i></i></span><span id="w-title"></span></div>
-    <div class="win-tabs" id="w-tabs"><span class="t" id="w-tab-a">panel.js</span><span class="t" id="w-tab-b">tint.js</span></div>
-    <div class="win-body">
-      <div class="win-side" id="w-side">
-        <div class="r" style="width:80%"></div>
-        <div class="r sel" id="w-sel"></div>
-        <div class="r" style="width:64%"></div>
-        <div class="r" style="width:86%"></div>
-      </div>
-      <div class="win-edit" id="w-edit">
-        <div class="l" style="width:70%"></div>
-        <div class="win-caretline"><span class="l"></span><span class="win-caret" id="w-caret"></span></div>
-        <div class="win-sel" id="w-selbar"></div>
-        <div class="win-btn" id="w-btn">Apply</div>
-      </div>
-    </div>
-    <div class="win-status" id="w-status"><span id="w-statustext"></span></div>
-  </div>
-
-  <div class="knobs" role="tablist" aria-label="Which color to edit">
-    <button role="tab" id="tab-background" aria-selected="true" aria-controls="field">
-      <span class="chip" id="chip-background"></span>Background
-    </button>
-    <button role="tab" id="tab-accent" aria-selected="false" aria-controls="field">
-      <span class="chip" id="chip-accent"></span>Accent
-    </button>
-  </div>
-
-  <div class="picker">
-    <div class="plane">
-      <div class="field" id="field" tabindex="0" aria-label="Lightness and colorfulness"><canvas></canvas><div class="dot" id="dot"></div></div>
-      <div class="hue" id="hue" tabindex="0" aria-label="Hue"><canvas></canvas><div class="ticks" id="ticks"></div><div class="knob" id="knob"></div></div>
-    </div>
-    <div class="readout">
-      <div class="colour">
-        <div class="swatch" id="swatch"></div>
-        <div class="value">
-          <input id="hex" spellcheck="false" maxlength="7" aria-label="Hex color">
-          <span class="coords" id="coords"></span>
+  <div class="work">
+    <div id="surface"></div>
+    <div class="side">
+      <div>
+        <div class="win" id="win">
+          <div class="bar" id="w-bar"><span id="w-title"></span></div>
+          <div class="body">
+            <div class="sb" id="w-sb"><i style="width:80%"></i><i id="w-sel" style="height:13px;margin:-3px -6px;border-radius:0"></i><i style="width:62%"></i></div>
+            <div class="ed" id="w-ed">
+              <i style="width:70%"></i>
+              <span class="caretline"><i></i><span class="caret" id="w-caret"></span></span>
+              <i id="w-selbar" style="height:9px;width:54%"></i>
+              <span class="btn" id="w-btn">Apply</span>
+            </div>
+          </div>
+          <div class="st" id="w-st"><span id="w-sttext"></span></div>
         </div>
-        <span class="name" id="name"></span>
+        <div class="switchrow">
+          <span class="lab">Show the colors already available in Themepane</span>
+          <button type="button" class="switch" id="r-toggle" role="switch" aria-checked="true" aria-label="Show the colors already available in Themepane"><i></i></button>
+        </div>
       </div>
-      <p class="muted" id="fade-note" style="margin:0; font-size:.9em; line-height:1.5"></p>
-      <div class="line" id="partners-box" hidden>
-        <span class="tag">Pairs with</span>
-        <div class="items" id="partners"></div>
+      <div id="sug-box">
+        <div class="lab" style="margin-bottom:7px">Suggested accents</div>
+        <div class="row" id="sug"></div>
       </div>
-      <div class="line" id="recents-box" hidden>
-        <span class="tag">Recent</span>
-        <div class="items sw" id="recents"></div>
+      <div id="rec-box" hidden>
+        <div class="lab" style="margin-bottom:7px">Recent</div>
+        <div class="row sw" id="rec"></div>
+      </div>
+      <div class="ctl">
+        <input id="hex" spellcheck="false" maxlength="7" aria-label="Hex color">
+        <span class="acts">
+          <button class="secondary" id="cancel">Cancel</button>
+          <button id="apply">Apply</button>
+        </span>
       </div>
     </div>
   </div>
 
-  <div class="presets" id="groups"></div>
-
-  <footer>
-    <button class="secondary" id="cancel">Cancel</button>
-    <button id="apply">Apply</button>
-  </footer>
+  <div id="presets"></div>
 </main>
 <script nonce="{{nonce}}">var module = { exports: {} };</script>
 <script nonce="{{nonce}}" src="{{tint}}"></script>
