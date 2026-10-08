@@ -16,7 +16,7 @@
   const UNSET = {
     "button.background": "#297aa0", "button.foreground": "#ffffff",
     "textLink.foreground": "#48a0c7", "editorCursor.foreground": "#bbbebf",
-    "editor.selectionBackground": "#276782dd",
+    "editor.selectionBackground": "#276782dd", "activityBar.activeBorder": "#0078d4",
   };
   const colorOf = (p, k) => p[k] || UNSET[k];
 
@@ -34,6 +34,9 @@
   const NEUTRAL = 0.012;
   const isNeutral = (hex) => tint.toOklch(hex).C <= NEUTRAL;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  const KNOBS = ["background", "accent"];
+  const hexBox = (k) => $("hex-" + k);
 
   let knob = "background";
   let presets = { background: [], accent: [] };
@@ -155,17 +158,18 @@
 
   // ---- the window this pair draws -------------------------------------------------------
   function paintWindow(p) {
-    const frameColor = p["titleBar.activeBackground"];
-    const pane = p["editor.background"];
-    const set = (id, st) => Object.assign($(id).style, st);
-    set("w-bar", { background: frameColor, color: "#cccccc" });
-    set("w-sb", { background: pane });
-    set("w-ed", { background: pane });
-    set("w-sel", { background: p["list.inactiveSelectionBackground"] });
-    set("w-caret", { background: colorOf(p, "editorCursor.foreground") });
-    set("w-selbar", { background: colorOf(p, "editor.selectionBackground") });
-    set("w-btn", { background: colorOf(p, "button.background"), color: colorOf(p, "button.foreground") });
-    set("w-st", { background: frameColor, color: "#cccccc" });
+    const vars = {
+      frame: p["titleBar.activeBackground"],
+      pane: p["editor.background"],
+      sel: p["list.inactiveSelectionBackground"],
+      mark: colorOf(p, "activityBar.activeBorder"),
+      ink: colorOf(p, "textLink.foreground"),
+      caret: colorOf(p, "editorCursor.foreground"),
+      selbg: colorOf(p, "editor.selectionBackground"),
+      fill: colorOf(p, "button.background"),
+      fillText: colorOf(p, "button.foreground"),
+    };
+    for (const k in vars) $("win").style.setProperty("--" + k, vars[k]);
     const bg = presetOf("background", colors.background);
     const ac = presetOf("accent", colors.accent);
     const name = (bg ? bg.name : "Custom")
@@ -260,7 +264,8 @@
       move((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, down);
     };
     const end = () => { if (up) up(); };
-    el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); el.focus(); at(e, true); });
+    el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); el.classList.add("tapped"); el.focus(); at(e, true); });
+    el.addEventListener("keydown", () => el.classList.remove("tapped"));
     el.addEventListener("pointermove", (e) => { if (el.hasPointerCapture(e.pointerId)) at(e, false); });
     el.addEventListener("pointerup", end);
     el.addEventListener("pointercancel", end);
@@ -278,8 +283,10 @@
       const arcW = clamp(size * 0.028, 8, 15);
       // the handle is a circle on the arc, so the track sits a handle's radius in from the box
       const hR = arcW / 2 + 3.5;
+      // each arc is named above it, so the track comes in far enough for that line of type
+      const aLab = clamp(size * 0.0165, 8.5, 11.5);
       // the gap has to survive the edge feathering at half resolution, or the two bodies merge
-      return { c, R, rIn: R * 0.68, rOut: R, dOut: R * 0.52, Ra: c - hR - 2, arcW, hR };
+      return { c, R, rIn: R * 0.68, rOut: R, dOut: R * 0.52, Ra: c - hR - 2 - aLab * 1.15, arcW, hR, aLab };
     },
     ARCS: {
       background: { from: 200, to: 340 },
@@ -298,6 +305,23 @@
       if (!round || round[0]) g.arc(s0[0], s0[1], hw, a0 + Math.PI, a0 + Math.PI * 2);
       g.closePath();
     },
+    // A soft white halo, the same on every side, so each body lifts off the page. The shape is
+    // drawn off-canvas and only its shadow is offset back into place, so nothing but the halo lands.
+    glow(g, size, path) {
+      const off = size * 3;
+      g.save();
+      g.shadowColor = "#ffffff26";
+      g.shadowBlur = clamp(size * 0.019, 7, 13);
+      // the offset is in device units while the translate goes through the transform, so it is
+      // scaled by the same amount here, or the shadow lands off-canvas on a hi-dpi screen
+      g.shadowOffsetX = off * g.getTransform().a;
+      g.fillStyle = "#000";
+      g.translate(-off, 0);
+      path();
+      g.fill();
+      g.restore();
+    },
+
     // A label's type and its soft drop shadow, shared by the flat and the curved ones.
     label(g, px, color, alpha) {
       g.font = "600 " + px.toFixed(1) + "px " + getComputedStyle(document.body).fontFamily;
@@ -547,6 +571,13 @@
       g.imageSmoothingEnabled = true;
       g.imageSmoothingQuality = "high";
       const have = this.cache && this.cache.key.indexOf(size + ":true:") === 0;
+      const gm = this.geom(size), gc = gm.c;
+      this.glow(g, size, () => {
+        g.beginPath();
+        g.arc(gc, gc, gm.rOut, 0, Math.PI * 2);
+        g.arc(gc, gc, gm.rIn, 0, Math.PI * 2, true);
+      });
+      this.glow(g, size, () => { g.beginPath(); g.arc(gc, gc, gm.dOut, 0, Math.PI * 2); });
       g.drawImage(this.disc(size, dpr, have), 0, 0, size, size);
       // once the pointer settles, redraw it once at device resolution — only while still coarse
       if (!have) {
@@ -605,6 +636,7 @@
       ["background", "accent"].forEach((k) => {
         const r = range(k);
         const [d0, d1] = this.span(k), [h0, h1] = this.hspan(k);
+        this.glow(g, size, () => this.capsule(g, c, geo.Ra, ang(d0), ang(d1), geo.arcW));
         g.save();
         this.capsule(g, c, geo.Ra, ang(d0), ang(d1), geo.arcW);
         g.clip();
@@ -637,6 +669,9 @@
           this.curveText(g, c, tr, (d0 + cDeg) / 2, "low contrast",
             { px: tp, color: "#ffb4b4", inward: true, max: ((cDeg - d0) * Math.PI / 180) * tr - tp });
         }
+        // the arc says which knob it moves, riding just outside the track
+        this.curveText(g, c, geo.Ra + geo.arcW / 2 + geo.aLab * 0.78, (d0 + d1) / 2,
+          k === "background" ? "BACKGROUND" : "ACCENT", { px: geo.aLab, color: "#ffffffb3" });
         const ha = this.arcPoint(k, coord[k].L);
         const hp = [c + Math.cos(ha) * geo.Ra, c + Math.sin(ha) * geo.Ra];
         g.beginPath(); g.arc(hp[0], hp[1], geo.hR, 0, 6.3);
@@ -670,9 +705,9 @@
     commit(knob);
   }
 
-  function pick(hex) {
-    if (knob === "accent") accentSet = true;
-    setColor(knob, hex);
+  function pick(hex, k = knob) {
+    if (k === "accent") accentSet = true;
+    setColor(k, hex);
     syncAccent();
     render();
     scheduleSug();
@@ -728,7 +763,7 @@
     frame = requestAnimationFrame(() => {
       frame = null;
       surface().draw();
-      if (document.activeElement !== $("hex")) $("hex").value = colors[knob];
+      for (const k of KNOBS) if (document.activeElement !== hexBox(k)) hexBox(k).value = colors[k];
       document.querySelectorAll(".sw button").forEach((b) => b.classList.toggle("on", b.dataset.hex === colors[knob]));
       paintWindow(palette());
       const sig = colors.background + (accentSet ? colors.accent : "");
@@ -747,12 +782,13 @@
     drawSuggestions();
   }
 
-  $("hex").addEventListener("input", () => {
-    const v = /^#?[0-9a-f]{6}$/i.test($("hex").value.trim()) && tint.normalizeHex($("hex").value);
-    if (!v) return;
-    pick(v);
-  });
-  $("hex").addEventListener("blur", () => { $("hex").value = colors[knob]; });
+  for (const k of KNOBS) {
+    hexBox(k).addEventListener("input", () => {
+      const v = /^#?[0-9a-f]{6}$/i.test(hexBox(k).value.trim()) && tint.normalizeHex(hexBox(k).value);
+      if (v) pick(v, k);
+    });
+    hexBox(k).addEventListener("blur", () => { hexBox(k).value = colors[k]; });
+  }
 
   const apply = () => vscode.postMessage({ type: "apply", background: colors.background, accent: accentSet ? colors.accent : null });
   const cancel = () => vscode.postMessage({ type: "cancel" });
@@ -763,7 +799,15 @@
     if (e.key === "Enter" && e.target.tagName !== "BUTTON") apply();
   });
 
-  new ResizeObserver(() => { if (presets.background.length) render(); }).observe(document.getElementById("surface"));
+  // Beside the wheel the preview shows the pair in place; wrapped under it, it is just a slab.
+  function stacked() {
+    const side = document.querySelector(".side");
+    side.classList.toggle("stacked", side.offsetTop > $("surface").offsetTop);
+  }
+  new ResizeObserver(() => {
+    stacked();
+    if (presets.background.length) render();
+  }).observe(document.getElementById("surface"));
 
   window.addEventListener("message", ({ data }) => {
     if (data.type !== "init") return;
@@ -777,6 +821,7 @@
     sent = colors.background + (accentSet ? colors.accent : "");
     surface().build();
     showKnob(data.knob);
+    stacked();
   });
   vscode.postMessage({ type: "ready" });
 })();

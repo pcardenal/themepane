@@ -20,12 +20,18 @@
 
 
   .work { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
-  #surface { flex: 1 1 540px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-  .side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  /* the wheel gives width back before the row wraps, so the preview stays beside it */
+  #surface { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .side { flex: 1 1 270px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .side > :first-child { flex: none; min-height: 0; }
+  /* the preview earns its place only beside the wheel: once the column wraps under it, it goes */
+  .side.stacked .win { display: none; }
 
   canvas { display: block; touch-action: none; }
   .hit { position: relative; outline: none; cursor: crosshair; }
   .hit:focus-visible { box-shadow: 0 0 0 2px var(--vscode-focusBorder); }
+  /* the press focuses the wheel itself, so its ring is for keyboard focus only */
+  .hit.tapped:focus-visible { box-shadow: none; }
   .dot {
     position: absolute; pointer-events: none; width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid #fff; box-shadow: 0 0 0 1px #000a, 0 1px 4px #0008; transform: translate(-50%, -50%);
@@ -41,19 +47,50 @@
   .play { position: absolute; top: -2px; width: 1px; background: #fff; pointer-events: none; }
   .axis { display: flex; justify-content: space-between; font-size: .75em; color: var(--vscode-descriptionForeground); }
 
-  /* window preview */
-  .win { border-radius: 7px; overflow: hidden; font-size: 11px; line-height: 1; }
-  .win .bar { height: 22px; display: flex; align-items: center; padding: 0 9px; }
-  .win .body { display: flex; height: 124px; }
-  .win .sb { flex: 0 0 62px; padding: 10px 6px; display: flex; flex-direction: column; gap: 8px; }
-  .win .sb i, .win .ed i { display: block; height: 5px; border-radius: 2px; background: #ffffff1f; }
-  .win .ed { flex: 1; min-width: 0; padding: 11px 11px; display: flex; flex-direction: column; gap: 9px; }
+  /* window preview: a whole window at 4:3, so the pair is shown on every surface it paints */
+  .win {
+    /* the width is pinned and the height has a floor, so a wrapped column can never collapse it */
+    aspect-ratio: 4 / 3; width: 100%; max-width: 440px; min-height: 180px; flex: none;
+    display: flex; flex-direction: column;
+    border-radius: 7px; overflow: hidden; font-size: 11px; line-height: 1;
+    background: var(--pane); box-shadow: 0 0 13px #ffffff1c;
+  }
+  .win .bar { flex: 0 0 9%; background: var(--frame); color: #cccccc; display: flex; align-items: center; padding: 0 9px; }
+  .win .tabrow { flex: 0 0 9%; background: var(--frame); display: flex; align-items: flex-end; padding: 0 5px; gap: 2px; }
+  .win .tabrow b {
+    font-weight: 400; font-size: .78em; color: #b5b5b5;
+    padding: 3px 9px 4px; border-radius: 5px 5px 0 0;
+  }
+  .win .tabrow b.on { background: var(--pane); color: #d7d7d7; }
+  .win .body { flex: 1; min-height: 0; display: flex; gap: 1px; }
+  .win .ab { flex: 0 0 22px; background: var(--pane); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; }
+  .win .ab i { position: relative; width: 11px; height: 11px; border-radius: 3px; background: #ffffff26; }
+  .win .ab i.on { background: #ffffff4d; }
+  .win .ab i.on::before {
+    content: ""; position: absolute; left: -5.5px; top: -2px; width: 2px; height: 15px;
+    background: var(--mark);
+  }
+  .win .sb { flex: 0 0 34%; min-width: 0; background: var(--pane); padding: 8px 7px; display: flex; flex-direction: column; gap: 7px; }
+  .win .sb u, .win .pan b { font-size: .72em; letter-spacing: .06em; color: #b5b5b5; text-decoration: none; }
+  .win .sb i, .win .ed i, .win .pan i { display: block; height: 5px; border-radius: 2px; background: #ffffff1f; }
+  .win .sb i.sel { height: 13px; margin: -4px -7px; border-radius: 0; background: var(--sel); }
+  .win .ed { flex: 1; min-width: 0; background: var(--pane); padding: 9px 10px; display: flex; flex-direction: column; gap: 8px; }
   .win .ed i { background: #ffffff1c; }
+  .win .ed i.link { background: var(--ink); opacity: .85; }
+  .win .ed i.selbar { background: var(--selbg); height: 8px; }
   .win .caretline { display: flex; align-items: center; gap: 3px; }
   .win .caretline i { flex: 0 0 44%; }
-  .win .caret { width: 2px; height: 11px; }
-  .win .btn { align-self: flex-start; margin-top: auto; font-size: 9px; padding: 3px 10px; border-radius: 3px; }
-  .win .st { height: 17px; display: flex; align-items: center; padding: 0 9px; font-size: 9px; }
+  .win .caret { width: 2px; height: 11px; background: var(--caret); }
+  .win .btn {
+    align-self: flex-start; margin-top: auto; font-size: 9px; padding: 3px 10px; border-radius: 3px;
+    background: var(--fill); color: var(--fillText);
+  }
+  .win .pan { flex: 0 0 22%; background: var(--pane); padding: 0 9px 7px; display: flex; flex-direction: column; gap: 7px; }
+  .win .pan .pantabs { display: flex; gap: 12px; padding: 7px 0 5px; }
+  .win .pan b { display: inline-block; padding-bottom: 4px; border-bottom: 2px solid transparent; }
+  .win .pan b.on { color: #d7d7d7; border-bottom-color: var(--mark); }
+  .win .st { flex: 0 0 8%; background: var(--frame); color: #cccccc; display: flex; align-items: center; gap: 7px; padding: 0 9px; font-size: 9px; }
+  .win .st .badge { margin-left: auto; padding: 1px 6px; border-radius: 999px; background: var(--fill); color: var(--fillText); }
 
   .lab { font-size: .95em; color: var(--vscode-foreground); }
   .row { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -86,9 +123,12 @@
 
   .ctl {
     margin-top: auto; padding-top: 14px; border-top: var(--edge);
-    display: flex; align-items: center; gap: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   }
   .ctl .acts { margin-left: auto; display: flex; gap: 7px; }
+  .hexes { display: flex; gap: 14px; }
+  .hexf { display: flex; align-items: center; gap: 6px; }
+  .hexf span { font-size: .9em; color: var(--vscode-descriptionForeground); }
   input {
     width: 9ch; padding: 4px 6px; border-radius: 4px;
     font-family: var(--vscode-editor-font-family, monospace); font-size: 1.05em;
@@ -114,17 +154,34 @@
     <div class="side">
       <div>
         <div class="win" id="win">
-          <div class="bar" id="w-bar"><span id="w-title"></span></div>
+          <div class="bar"><span id="w-title"></span></div>
+          <div class="tabrow"><b class="on">index.js</b><b>styles.css</b><b>readme.md</b></div>
           <div class="body">
-            <div class="sb" id="w-sb"><i style="width:80%"></i><i id="w-sel" style="height:13px;margin:-3px -6px;border-radius:0"></i><i style="width:62%"></i></div>
-            <div class="ed" id="w-ed">
+            <div class="ab"><i class="on"></i><i></i><i></i><i></i></div>
+            <div class="sb">
+              <u>EXPLORER</u>
+              <i style="width:76%"></i>
+              <i class="sel"></i>
+              <i style="width:54%"></i>
+              <i style="width:68%"></i>
+              <i style="width:46%"></i>
+            </div>
+            <div class="ed">
               <i style="width:70%"></i>
-              <span class="caretline"><i></i><span class="caret" id="w-caret"></span></span>
-              <i id="w-selbar" style="height:9px;width:54%"></i>
-              <span class="btn" id="w-btn">Apply</span>
+              <i class="link" style="width:38%"></i>
+              <span class="caretline"><i></i><span class="caret"></span></span>
+              <i class="selbar" style="width:54%"></i>
+              <i style="width:62%"></i>
+              <i style="width:44%"></i>
+              <span class="btn">Apply</span>
             </div>
           </div>
-          <div class="st" id="w-st"><span id="w-sttext"></span></div>
+          <div class="pan">
+            <div class="pantabs"><b class="on">TERMINAL</b><b>PROBLEMS</b></div>
+            <i style="width:58%"></i>
+            <i style="width:34%"></i>
+          </div>
+          <div class="st"><span id="w-sttext"></span><span class="badge">3</span></div>
         </div>
         <div class="switchrow">
           <span class="lab">Show the colors already available in Themepane</span>
@@ -140,7 +197,10 @@
         <div class="row sw" id="rec"></div>
       </div>
       <div class="ctl">
-        <input id="hex" spellcheck="false" maxlength="7" aria-label="Hex color">
+        <span class="hexes">
+          <label class="hexf"><span>Background</span><input id="hex-background" spellcheck="false" maxlength="7"></label>
+          <label class="hexf"><span>Accent</span><input id="hex-accent" spellcheck="false" maxlength="7"></label>
+        </span>
         <span class="acts">
           <button class="secondary" id="cancel">Cancel</button>
           <button id="apply">Apply</button>
