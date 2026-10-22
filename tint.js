@@ -497,7 +497,11 @@ function colorsFor(background, accent, { connected = false } = {}) {
     Object.assign(out, FRAME_TEXT);
     Object.assign(out, READABLE);
     if (connected) set(PILL_ACTIVE_HOVER, out["editor.background"]);
-    else set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
+    else {
+      set(PILL_ACTIVE, out["list.inactiveSelectionBackground"]);
+      // VS Code 1.143 paints the tab strip behind pills too: keep it the editor's color.
+      out["editorGroupHeader.tabsBackground"] = out["editor.background"];
+    }
     set(PILL_HOVER, toHex(frame.h, frame.s, Math.min(1, frame.l + 0.04)));
     set(PILL_CLEAR, "#00000000");
   }
